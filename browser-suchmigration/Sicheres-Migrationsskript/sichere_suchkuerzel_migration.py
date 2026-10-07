@@ -26,6 +26,7 @@ HOME = Path.home()
 BROWSERS = {
     "Chrome": HOME / "Library/Application Support/Google/Chrome",
     "Brave": HOME / "Library/Application Support/BraveSoftware/Brave-Browser",
+    "Ego Lite": HOME / "Library/Application Support/Citro Labs/ego lite",
 }
 
 
@@ -34,12 +35,22 @@ def die(message: str) -> None:
 
 
 def profiles(browser_root: Path) -> list[Path]:
+    """Profile eines Browser-Roots. Wirft PermissionError mit Hinweistext."""
     if not browser_root.is_dir():
         return []
-    return sorted(
-        (p for p in browser_root.iterdir() if p.is_dir() and (p / "Preferences").is_file()),
-        key=lambda p: (p.name != "Default", p.name.lower()),
-    )
+    try:
+        found = sorted(
+            (p for p in browser_root.iterdir() if p.is_dir() and (p / "Preferences").is_file()),
+            key=lambda p: (p.name != "Default", p.name.lower()),
+        )
+    except PermissionError as error:
+        raise PermissionError(
+            f"macOS verweigert den Zugriff auf {browser_root}.\n\n"
+            "Lösung: Systemeinstellungen → Datenschutz & Sicherheit → "
+            "Vollzugriff → die aufrufende App (Terminal, iTerm, …) aktivieren "
+            "und das Skript danach neu starten."
+        ) from error
+    return found
 
 
 def choose(options: list[str], question: str) -> int:
@@ -56,9 +67,17 @@ def choose(options: list[str], question: str) -> int:
 
 
 def choose_browser() -> tuple[str, Path]:
-    available = [(name, root) for name, root in BROWSERS.items() if profiles(root)]
+    available: list[tuple[str, Path]] = []
+    for name, root in BROWSERS.items():
+        try:
+            found = profiles(root)
+        except PermissionError as error:
+            print(f"  {name}: kein Zugriff — {error}")
+            continue
+        if found:
+            available.append((name, root))
     if not available:
-        die("Kein Chrome- oder Brave-Profil gefunden.")
+        die("Kein zugängliches Browser-Profil gefunden.")
     index = choose([name for name, _ in available], "Browser auswählen")
     return available[index]
 
@@ -72,14 +91,35 @@ def choose_profile(root: Path) -> Path:
 
 
 def browser_running(browser_name: str) -> bool:
-    pattern = "Brave Browser" if browser_name == "Brave" else "Google Chrome"
-    result = subprocess.run(["pgrep", "-f", pattern], capture_output=True, text=True)
-    return bool(result.stdout.strip())
+    patterns = {
+        "Chrome": ["Google Chrome", "Google Chrome Helper"],
+        "Brave": ["Brave Browser"],
+        "Ego Lite": ["ego lite"],
+    }
+    search_patterns = patterns.get(browser_name, [browser_name])
+    for pattern in search_patterns:
+        result = subprocess.run(["pgrep", "-fl", pattern], capture_output=True, text=True)
+        if result.stdout.strip():
+            return True
+    return False
 
 
-def require_closed(browser_name: str) -> None:
-    if browser_running(browser_name):
-        die(f"{browser_name} läuft noch. Bitte vollständig beenden und erneut starten.")
+def confirm_while_running(browser_name: str) -> bool:
+    """Warnt bei laufendem Browser und fragt, ob trotzdem fortgefahren wird.
+
+    Lesezugriffe (Export) sind neben einem laufenden Browser meist unkritisch.
+    Schreibzugriffe (Import) können vom Browser überschrieben werden und wirken
+    erst nach einem Neustart – der Nutzer entscheidet selbst.
+    """
+    if not browser_running(browser_name):
+        return True
+    print(
+        f"WARNUNG: {browser_name} läuft noch.\n"
+        "Änderungen können vom laufenden Browser überschrieben werden und\n"
+        "wirken erst nach einem Neustart des Browsers."
+    )
+    answer = input("Trotzdem fortfahren? (j/n) [n]: ").strip().lower()
+    return answer in {"j", "ja", "y", "yes"}
 
 
 def db_columns(connection: sqlite3.Connection) -> set[str]:
@@ -89,11 +129,21 @@ def db_columns(connection: sqlite3.Connection) -> set[str]:
 def read_keywords(web_data: Path) -> tuple[list[str], list[dict[str, object]]]:
     if not web_data.is_file():
         die(f"Web-Data-Datei fehlt: {web_data}")
-    with sqlite3.connect(f"file:{web_data}?mode=ro", uri=True) as db:
-        columns = sorted(db_columns(db))
-        if not columns:
-            die("Die keywords-Tabelle fehlt in Web Data.")
-        rows = [dict(zip(columns, row)) for row in db.execute(f"SELECT {','.join(columns)} FROM keywords")]
+    # Ein laufender Browser hält Web Data (WAL) gesperrt. Deshalb wird
+    # aus einer temporären Kopie gelesen, inklusive -wal/-shm, damit
+    # noch nicht checkpointete Änderungen sichtbar werden.
+    with tempfile.TemporaryDirectory(prefix="webdata-snapshot-") as temporary:
+        snapshot = Path(temporary) / "Web Data"
+        shutil.copy2(web_data, snapshot)
+        for suffix in ("-wal", "-shm"):
+            sidecar = Path(f"{web_data}{suffix}")
+            if sidecar.is_file():
+                shutil.copy2(sidecar, Path(f"{snapshot}{suffix}"))
+        with sqlite3.connect(snapshot, timeout=30) as db:
+            columns = sorted(db_columns(db))
+            if not columns:
+                die("Die keywords-Tabelle fehlt in Web Data.")
+            rows = [dict(zip(columns, row)) for row in db.execute(f"SELECT {','.join(columns)} FROM keywords")]
     return columns, rows
 
 
@@ -149,8 +199,14 @@ def parse_xml(source: Path) -> tuple[object, list[dict[str, object]]]:
 
 def backup(profile: Path) -> Path:
     stamp = dt.datetime.now().strftime("%Y%m%d-%H%M%S")
-    target = profile / "Search-Migration-Backups" / stamp
-    target.mkdir(parents=True, exist_ok=False)
+    base = profile / "Search-Migration-Backups"
+    target = base / stamp
+    # Zwei Importe in derselben Sekunde dürfen nicht kollidieren.
+    counter = 2
+    while target.exists():
+        target = base / f"{stamp}-{counter}"
+        counter += 1
+    target.mkdir(parents=True)
     for name in ("Preferences", "Web Data"):
         source = profile / name
         if source.is_file():
@@ -172,8 +228,7 @@ def atomic_json_write(path: Path, value: object) -> None:
             os.unlink(temporary)
 
 
-def import_xml(profile: Path, browser_name: str, source: Path) -> None:
-    require_closed(browser_name)
+def import_xml(profile: Path, source: Path) -> None:
     provider, engines = parse_xml(source)
     if not engines:
         die("Die XML-Datei enthält keine gültigen Suchmaschinen.")
@@ -185,23 +240,35 @@ def import_xml(profile: Path, browser_name: str, source: Path) -> None:
         atomic_json_write(preferences_path, preferences)
 
         web_data = profile / "Web Data"
-        with sqlite3.connect(web_data) as db:
+        with sqlite3.connect(web_data, timeout=30) as db:
             columns = db_columns(db)
             for row in engines:
                 keyword = row["keyword"]
                 existing = db.execute("SELECT id FROM keywords WHERE keyword = ?", (keyword,)).fetchone()
-                updates = {key: value for key, value in row.items() if key in columns and key != "id"}
+                # url_hash nicht übernehmen: pro Browser berechnet, sonst
+                # kollidiert der Import mit der lokalen Historie.
+                updates = {
+                    key: value
+                    for key, value in row.items()
+                    if key in columns and key not in {"id", "url_hash"}
+                }
                 if existing:
+                    if not updates:
+                        continue
                     assignments = ",".join(f"{key} = ?" for key in updates)
                     db.execute(f"UPDATE keywords SET {assignments} WHERE id = ?", (*updates.values(), existing[0]))
                 else:
-                    inserts = {key: value for key, value in updates.items() if key in {"short_name", "keyword", "url", "favicon_url"}}
+                    inserts = {key: value for key, value in updates.items() if key in {"short_name", "keyword", "url", "favicon_url", "input_encodings", "suggest_url"}}
                     names = ",".join(inserts)
                     marks = ",".join("?" for _ in inserts)
                     db.execute(f"INSERT INTO keywords ({names}) VALUES ({marks})", tuple(inserts.values()))
             db.commit()
-    except Exception:
-        print(f"Änderung fehlgeschlagen. Das Backup liegt hier: {backup_path}", file=sys.stderr)
+    except Exception as error:
+        print(
+            f"Änderung fehlgeschlagen ({type(error).__name__}: {error}).\n"
+            f"Das unveränderte Backup liegt hier: {backup_path}",
+            file=sys.stderr,
+        )
         raise
     print(f"Import abgeschlossen. Backup: {backup_path}")
 
@@ -215,11 +282,12 @@ def main() -> None:
         die("Bitte genau eine Option angeben: --export DATEI oder --import DATEI")
     browser_name, root = choose_browser()
     profile = choose_profile(root)
-    require_closed(browser_name) if args.export_path else None
+    if not confirm_while_running(browser_name):
+        die("Abgebrochen.")
     if args.export_path:
         export_xml(profile, args.export_path)
     else:
-        import_xml(profile, browser_name, args.import_path)
+        import_xml(profile, args.import_path)
 
 
 if __name__ == "__main__":
