@@ -251,8 +251,11 @@ def with_read_db(path: Path, operation):
         if connection is not None:
             connection.close()
     with stable_snapshot(path) as snapshot:
-        with open_db(snapshot, read_only=True) as connection:
+        connection = open_db(snapshot, read_only=True)
+        try:
             return operation(connection)
+        finally:
+            connection.close()
 
 
 def custom_conditions(existing_columns: set[str]) -> list[str]:
