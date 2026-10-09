@@ -849,11 +849,15 @@ def self_test() -> None:
           enforced_by_policy INTEGER DEFAULT 0, featured_by_policy INTEGER DEFAULT 0, url_hash BLOB
         );
         """
-        with sqlite3.connect(db_path) as connection:
+        connection = sqlite3.connect(db_path)
+        try:
             connection.executescript(schema)
             connection.execute(
                 "INSERT INTO keywords (short_name,keyword,favicon_url,url,input_encodings,is_active,sync_guid) VALUES ('Test','t','','https://example.test/?q={searchTerms}','UTF-8',1,'test-guid')"
             )
+            connection.commit()
+        finally:
+            connection.close()
         (profile_dir / "Preferences").write_text(
             json.dumps({"default_search_provider": {"guid": "test-guid"}}), encoding="utf-8"
         )
