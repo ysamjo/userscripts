@@ -6,6 +6,7 @@ Lokale Werkzeuge zum Übertragen benutzerdefinierter Suchmaschinen und Suchkürz
 
 - Browserprofil-Daten bleiben lokal. Nie ein gesamtes Profil ersetzen.
 - Vor jedem Import oder Wiederherstellen in der Desktop-App Browserbeendigung prüfen, Änderungen bestätigen lassen und eine SQLite-Sicherung anlegen.
+- Nicht zugängliche Browserprofilordner bei der automatischen Suche überspringen und im UI melden, damit andere Browserprofile weiter nutzbar bleiben.
 - Beim Wiederherstellen nur eigene Suchkürzel ändern; Browser- und andere Profiltabellen unverändert lassen.
 - Exportformat in der bestehenden Transferdatei kompatibel halten. Standard-Suchmaschinen-Einstellung muss der Nutzer im Browser bestätigen.
 - Keine Zugangsdaten oder Browserinhalte außerhalb der Suchmaschinendaten erfassen.

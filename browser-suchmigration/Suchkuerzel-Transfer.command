@@ -26,6 +26,7 @@ MAX_XML_SIZE = 750_000
 MAX_FIREFOX_HTML_SIZE = 1_500_000
 MAX_SHORTCUTS = 1_000
 BACKUP_DIR = Path.home() / "Documents" / "Suchkuerzel-Backups"
+DISCOVERY_WARNINGS: list[str] = []
 BROWSERS = {
     "chrome": {
         "label": "Google Chrome",
@@ -381,14 +382,22 @@ def choose_default_search(profile: dict[str, Any]) -> dict[str, str]:
 
 def discover_profiles() -> list[dict[str, Any]]:
     result = []
+    DISCOVERY_WARNINGS.clear()
     for browser_key, browser in BROWSERS.items():
         root = browser["root"]
-        if not root.is_dir():
+        try:
+            if not root.is_dir():
+                continue
+            candidates = sorted(
+                (item for item in root.iterdir() if item.is_dir() and (item / "Web Data").is_file()),
+                key=profile_sort_key,
+            )
+        except PermissionError as error:
+            DISCOVERY_WARNINGS.append(f"{browser['label']}: kein Zugriff auf {root} ({error})")
             continue
-        candidates = sorted(
-            (item for item in root.iterdir() if item.is_dir() and (item / "Web Data").is_file()),
-            key=profile_sort_key,
-        )
+        except OSError as error:
+            DISCOVERY_WARNINGS.append(f"{browser['label']}: Profilordner nicht lesbar: {error}")
+            continue
         for directory in candidates:
             try:
                 count = len(read_shortcuts(directory / "Web Data"))

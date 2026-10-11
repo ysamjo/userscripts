@@ -205,6 +205,14 @@ def load_transfer():
     def app_main() -> int:
         try:
             profiles = module.discover_profiles()
+            if module.DISCOVERY_WARNINGS:
+                QMessageBox.warning(
+                    None,
+                    "Browserzugriff eingeschränkt",
+                    "Einige Browserprofile sind für diese App gesperrt und wurden übersprungen.\n\n"
+                    + "\n".join(module.DISCOVERY_WARNINGS)
+                    + "\n\nDie zugänglichen Profile können trotzdem verwendet werden. Für die gesperrten Ordner erteile der App in Systemeinstellungen → Datenschutz & Sicherheit den nötigen Zugriff.",
+                )
             action = choose_from_list("Suchkürzel-Transfer", "Was möchtest du tun?", ["Als XML exportieren", "Aus XML importieren", "Für Firefox exportieren", "Sicherung wiederherstellen"])
             if action == "Als XML exportieren":
                 module.export_flow(profiles)

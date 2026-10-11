@@ -22,6 +22,10 @@ Die App erkennt übliche Profilordner automatisch. Über „Profilordner manuell
 
 Der Zielbrowser muss für den Import vollständig beendet sein. Das Programm bricht bei geschützten oder mehrdeutigen Kürzel-Kollisionen ab. Backups liegen unter `Documents/Suchkuerzel-Backups`.
 
+### macOS: Zugriff auf Browserprofile
+
+macOS vergibt den Profilzugriff pro App. Wenn ein Browserordner wie Brave gesperrt ist, wird dieser Browser jetzt übersprungen und die zugänglichen Profile bleiben auswählbar. Für Zugriff auf weitere Profile muss `SuchkuerzelTransfer.app` unter **Systemeinstellungen → Datenschutz & Sicherheit → Festplattenvollzugriff** freigegeben und danach neu gestartet werden.
+
 ## Start aus dem Quellcode
 
 Python 3.11 oder neuer wird benötigt.
