@@ -123,12 +123,12 @@ def load_transfer():
         count = len(module.read_shortcuts(database))
         return {"token": f"{browser_key}:{profile_dir}", "browser_key": browser_key, "label": f"{browser_label} — {module.profile_name(profile_dir)}", "directory": profile_dir, "path": database, "count": count}
 
-    def choose_browser(profiles, purpose: str) -> str:
+    def choose_browser(profiles, purpose: str, allow_firefox: bool = False) -> str:
         keys = list(dict.fromkeys(str(profile["browser_key"]) for profile in profiles))
-        choices = [
-            f"{module.BROWSERS[key]['label']} ({sum(profile['browser_key'] == key for profile in profiles)} Profile)"
-            for key in keys
-        ]
+        choices = [f"{module.BROWSERS[key]['label']} ({sum(profile['browser_key'] == key for profile in profiles)} Profile)" for key in keys]
+        if allow_firefox:
+            keys.append("firefox")
+            choices.append("Firefox (Lesezeichen-HTML)")
         picked = choose_from_list("Suchkürzel-Transfer", purpose, choices)
         return keys[choices.index(picked)]
 
@@ -201,13 +201,25 @@ def load_transfer():
 
     def direct_transfer_flow(profiles) -> None:
         source_browser = choose_browser(profiles, "Von welchem Browser sollen die Suchkürzel übernommen werden?")
-        target_browser = choose_browser(profiles, "In welchen Browser sollen die Suchkürzel übertragen werden?")
+        target_browser = choose_browser(profiles, "In welchen Browser sollen die Suchkürzel übertragen werden?", allow_firefox=True)
         source = choose_browser_profile(profiles, source_browser, "Quellprofil auswählen:")
-        target = choose_browser_profile(profiles, target_browser, "Zielprofil auswählen:")
-
         entries = module.read_shortcuts(source["path"])
         if not entries:
             raise module.TransferError(f"Im Quellprofil {source['label']} gibt es keine eigenen Suchkürzel.")
+        if target_browser == "firefox":
+            filename = f"Firefox-Suchkuerzel-{module.safe_component(source['label'])}-{module.dt.date.today().isoformat()}.html"
+            destination = choose_firefox_save_path(filename)
+            destination.write_text(module.to_firefox_html(entries, source["label"]), encoding="utf-8")
+            QDesktopServices.openUrl(QUrl.fromLocalFile(str(destination.parent)))
+            alert(
+                "Firefox-Importdatei erstellt",
+                f"Von {source['label']} exportiert:\n{len(entries)} Suchkürzel\n\n"
+                f"Datei: {destination}\n\n"
+                "In Firefox die Lesezeichenverwaltung öffnen und „Lesezeichen von HTML importieren“ wählen.",
+            )
+            return
+
+        target = choose_browser_profile(profiles, target_browser, "Zielprofil auswählen:")
         default_search = module.read_default_search(source) or module.choose_default_search(source)
         entries = module.entries_for_import(target["path"], entries, default_search)
         result = module.preview(target["path"], entries)

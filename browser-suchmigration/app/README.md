@@ -12,7 +12,7 @@ Die App erkennt übliche Profilordner automatisch. Über „Profilordner manuell
 
 ## Funktionen
 
-- Quellbrowser und Zielbrowser auswählen und Suchkürzel direkt übertragen
+- Quellbrowser und Zielbrowser auswählen und Suchkürzel direkt zwischen Chromium-Browsern übertragen
 - Quellprofil und Zielprofil auswählen, wenn ein Browser mehrere Profile enthält
 - Vor dem Import Änderungen und Konflikte anzeigen
 - Vor einem Schreibzugriff die Browserdatenbank sichern
