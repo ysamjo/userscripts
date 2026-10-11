@@ -206,12 +206,27 @@ def load_transfer():
         try:
             profiles = module.discover_profiles()
             if module.DISCOVERY_WARNINGS:
+                settings_opened = False
+                if sys.platform == "darwin":
+                    settings_url = "x-apple.systempreferences:com.apple.preference.security?Privacy_AllFiles"
+                    settings_opened = subprocess.run(
+                        ["open", settings_url],
+                        stdout=subprocess.DEVNULL,
+                        stderr=subprocess.DEVNULL,
+                        check=False,
+                    ).returncode == 0
+                settings_hint = (
+                    "Die Systemeinstellungen wurden geöffnet. Füge dort „SuchkuerzelTransfer.app“ zum Festplattenvollzugriff hinzu und starte die App danach neu."
+                    if settings_opened
+                    else "Öffne Systemeinstellungen → Datenschutz & Sicherheit → Festplattenvollzugriff, füge „SuchkuerzelTransfer.app“ hinzu und starte die App danach neu."
+                )
                 QMessageBox.warning(
                     None,
                     "Browserzugriff eingeschränkt",
                     "Einige Browserprofile sind für diese App gesperrt und wurden übersprungen.\n\n"
                     + "\n".join(module.DISCOVERY_WARNINGS)
-                    + "\n\nDie zugänglichen Profile können trotzdem verwendet werden. Für die gesperrten Ordner erteile der App in Systemeinstellungen → Datenschutz & Sicherheit den nötigen Zugriff.",
+                    + "\n\nDie zugänglichen Profile können trotzdem verwendet werden. "
+                    + settings_hint,
                 )
             action = choose_from_list("Suchkürzel-Transfer", "Was möchtest du tun?", ["Als XML exportieren", "Aus XML importieren", "Für Firefox exportieren", "Sicherung wiederherstellen"])
             if action == "Als XML exportieren":

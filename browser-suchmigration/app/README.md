@@ -24,7 +24,7 @@ Der Zielbrowser muss für den Import vollständig beendet sein. Das Programm bri
 
 ### macOS: Zugriff auf Browserprofile
 
-macOS vergibt den Profilzugriff pro App. Wenn ein Browserordner wie Brave gesperrt ist, wird dieser Browser jetzt übersprungen und die zugänglichen Profile bleiben auswählbar. Für Zugriff auf weitere Profile muss `SuchkuerzelTransfer.app` unter **Systemeinstellungen → Datenschutz & Sicherheit → Festplattenvollzugriff** freigegeben und danach neu gestartet werden.
+macOS vergibt den Profilzugriff pro App. Wenn ein Browserordner wie Brave gesperrt ist, öffnet die App beim Start automatisch **Systemeinstellungen → Datenschutz & Sicherheit → Festplattenvollzugriff**. Füge dort `SuchkuerzelTransfer.app` hinzu und starte die App danach neu. Zugängliche Profile bleiben währenddessen auswählbar.
 
 ## Start aus dem Quellcode
 
