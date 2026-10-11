@@ -1,6 +1,6 @@
 # Browser-Suchmigration
 
-Lokale Werkzeuge zum Übertragen benutzerdefinierter Suchmaschinen und Suchkürzel zwischen Chromium-Profilen. Die Desktop-App liegt in `app/`, nutzt PySide6 und bindet die vorhandene Transferlogik aus `Suchkuerzel-Transfer.command` ein. Die übrigen Skripte sind bestehende macOS-Werkzeuge.
+Lokale Werkzeuge zum Übertragen benutzerdefinierter Suchmaschinen und Suchkürzel zwischen Chromium-Profilen. Die Desktop-App in `app/` lässt Quellbrowser, Zielbrowser und bei Bedarf die Profile direkt auswählen; sie nutzt PySide6 und bindet die vorhandene Transferlogik aus `Suchkuerzel-Transfer.command` ein. Die übrigen Skripte sind bestehende macOS-Werkzeuge.
 
 ## Grenzen
 

@@ -12,7 +12,8 @@ Die App erkennt übliche Profilordner automatisch. Über „Profilordner manuell
 
 ## Funktionen
 
-- Suchkürzel als XML exportieren und aus XML importieren
+- Quellbrowser und Zielbrowser auswählen und Suchkürzel direkt übertragen
+- Quellprofil und Zielprofil auswählen, wenn ein Browser mehrere Profile enthält
 - Vor dem Import Änderungen und Konflikte anzeigen
 - Vor einem Schreibzugriff die Browserdatenbank sichern
 - Bestehende Kürzel aktualisieren, neue hinzufügen und nichts löschen

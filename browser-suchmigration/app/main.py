@@ -123,6 +123,23 @@ def load_transfer():
         count = len(module.read_shortcuts(database))
         return {"token": f"{browser_key}:{profile_dir}", "browser_key": browser_key, "label": f"{browser_label} — {module.profile_name(profile_dir)}", "directory": profile_dir, "path": database, "count": count}
 
+    def choose_browser(profiles, purpose: str) -> str:
+        keys = list(dict.fromkeys(str(profile["browser_key"]) for profile in profiles))
+        choices = [
+            f"{module.BROWSERS[key]['label']} ({sum(profile['browser_key'] == key for profile in profiles)} Profile)"
+            for key in keys
+        ]
+        picked = choose_from_list("Suchkürzel-Transfer", purpose, choices)
+        return keys[choices.index(picked)]
+
+    def choose_browser_profile(profiles, browser_key: str, purpose: str):
+        matching = [profile for profile in profiles if profile["browser_key"] == browser_key]
+        if not matching:
+            raise module.TransferError(f"Für {module.BROWSERS[browser_key]['label']} wurde kein zugängliches Profil gefunden.")
+        if len(matching) == 1:
+            return matching[0]
+        return choose_profile(matching, purpose)
+
     def choose_save_path(default_name: str) -> Path:
         filename, _ = QFileDialog.getSaveFileName(None, "XML-Export speichern", str(Path.home() / default_name), "Suchkürzel-XML (*.xml)")
         if not filename:
@@ -182,6 +199,40 @@ def load_transfer():
         QDesktopServices.openUrl(QUrl.fromLocalFile(str(destination.parent)))
         alert("Firefox-Datei erstellt", f"{len(shortcuts)} Suchkürzel gespeichert:\n{destination}\n\nIn Firefox die Lesezeichenverwaltung öffnen und „Lesezeichen von HTML importieren“ wählen.")
 
+    def direct_transfer_flow(profiles) -> None:
+        source_browser = choose_browser(profiles, "Von welchem Browser sollen die Suchkürzel übernommen werden?")
+        target_browser = choose_browser(profiles, "In welchen Browser sollen die Suchkürzel übertragen werden?")
+        source = choose_browser_profile(profiles, source_browser, "Quellprofil auswählen:")
+        target = choose_browser_profile(profiles, target_browser, "Zielprofil auswählen:")
+
+        entries = module.read_shortcuts(source["path"])
+        if not entries:
+            raise module.TransferError(f"Im Quellprofil {source['label']} gibt es keine eigenen Suchkürzel.")
+        default_search = module.read_default_search(source) or module.choose_default_search(source)
+        entries = module.entries_for_import(target["path"], entries, default_search)
+        result = module.preview(target["path"], entries)
+        if result["conflicts"]:
+            raise module.TransferError("Geschützte oder mehrdeutige Kürzel-Kollisionen: " + ", ".join(result["conflicts"][:5]))
+
+        confirm(
+            "Übertragung bestätigen",
+            f"Von: {source['label']}\nNach: {target['label']}\n\n"
+            f"{result['added']} neu\n{result['updated']} aktualisiert\n"
+            f"{result['unchanged']} unverändert\n\n"
+            "Nichts wird gelöscht. Vorher wird eine Sicherung des Zielprofils erstellt.",
+            "Übertragen",
+        )
+        module.wait_until_import_ready(target, require_closed=True)
+        final, backup_path = module.apply_import(target["path"], target["label"], entries)
+        alert(
+            "Übertragung abgeschlossen",
+            f"Von {source['label']} nach {target['label']} übertragen:\n"
+            f"{final['added']} neu, {final['updated']} aktualisiert, {final['unchanged']} unverändert.\n\n"
+            f"Sicherung des Zielprofils:\n{backup_path}\n\n"
+            f"Öffne im Zielbrowser die Sucheinstellungen und wähle dort „{default_search['short_name']}“ als Standardsuche.",
+        )
+        module.open_search_settings(target)
+
     def restore_flow(profiles) -> None:
         profile = module.choose_profile(profiles, "Zielprofil für die Wiederherstellung auswählen:")
         filename, _ = QFileDialog.getOpenFileName(None, "Suchkürzel-Sicherung auswählen", str(module.BACKUP_DIR), "SQLite-Sicherung (*.sqlite)")
@@ -228,15 +279,7 @@ def load_transfer():
                     + "\n\nDie zugänglichen Profile können trotzdem verwendet werden. "
                     + settings_hint,
                 )
-            action = choose_from_list("Suchkürzel-Transfer", "Was möchtest du tun?", ["Als XML exportieren", "Aus XML importieren", "Für Firefox exportieren", "Sicherung wiederherstellen"])
-            if action == "Als XML exportieren":
-                module.export_flow(profiles)
-            elif action == "Aus XML importieren":
-                module.import_flow(profiles)
-            elif action == "Für Firefox exportieren":
-                firefox_export_flow(profiles)
-            else:
-                restore_flow(profiles)
+            direct_transfer_flow(profiles)
             return 0
         except module.Cancelled:
             return 0
