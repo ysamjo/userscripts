@@ -19,7 +19,7 @@ Die App erkennt übliche Profilordner automatisch. Über „Profilordner manuell
 - Bestehende Kürzel aktualisieren, neue hinzufügen und nichts löschen
 - Suchkürzel für Firefox als HTML-Lesezeichen exportieren
 - Profile über den üblichen Browserpfad erkennen oder manuell auswählen
-- Standardsuche aus der Quelle in der Zielprofil-Datenbank verfügbar machen; die Auswahl als Standardsuche bestätigt der Nutzer anschließend im Browser
+- Standardsuche aus der Quelle in der Zielprofil-Datenbank verfügbar machen, sofern die Quelle eine hat; die Auswahl als Standardsuche bestätigt der Nutzer anschließend im Browser
 
 Der Zielbrowser muss für den Import vollständig beendet sein. Das Programm bricht bei geschützten oder mehrdeutigen Kürzel-Kollisionen ab. Backups liegen unter `Documents/Suchkuerzel-Backups`.
 

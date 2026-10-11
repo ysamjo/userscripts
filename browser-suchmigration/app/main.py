@@ -100,14 +100,7 @@ def load_transfer():
             raise module.Cancelled
         return choice
 
-    def choose_profile(profiles, purpose: str):
-        labels = [f"{item['label']} — {item['count']} Kürzel" for item in profiles]
-        manual = "Profilordner manuell auswählen …"
-        choice, accepted = QInputDialog.getItem(None, "Suchkürzel-Transfer", purpose, labels + [manual], 0, False)
-        if not accepted:
-            raise module.Cancelled
-        if choice != manual:
-            return profiles[labels.index(choice)]
+    def choose_manual_profile():
         browser_labels = [str(item["label"]) for item in module.BROWSERS.values()]
         browser_label, accepted = QInputDialog.getItem(None, "Browser auswählen", "Zu welchem Browser gehört das Profil?", browser_labels, 0, False)
         if not accepted:
@@ -123,9 +116,68 @@ def load_transfer():
         count = len(module.read_shortcuts(database))
         return {"token": f"{browser_key}:{profile_dir}", "browser_key": browser_key, "label": f"{browser_label} — {module.profile_name(profile_dir)}", "directory": profile_dir, "path": database, "count": count}
 
+    def choose_profile(profiles, purpose: str):
+        labels = [f"{item['label']} — {item['count']} Kürzel" for item in profiles]
+        manual = "Profilordner manuell auswählen …"
+        choice, accepted = QInputDialog.getItem(None, "Suchkürzel-Transfer", purpose, labels + [manual], 0, False)
+        if not accepted:
+            raise module.Cancelled
+        if choice != manual:
+            return profiles[labels.index(choice)]
+        return choose_manual_profile()
+
+    def choose_source_profile(profiles):
+        labels = [f"{item['label']} — {item['count']} Kürzel" for item in profiles]
+        actions = [
+            "Profilordner manuell auswählen …",
+            "Aus XML-Datei importieren …",
+            "Sicherung wiederherstellen …",
+        ]
+        choice, accepted = QInputDialog.getItem(
+            None,
+            "Suchkürzel-Transfer",
+            "Quell-Browserprofil auswählen:",
+            labels + actions,
+            0,
+            False,
+        )
+        if not accepted:
+            raise module.Cancelled
+        if choice in labels:
+            return "profile", profiles[labels.index(choice)]
+        return choice, None
+
+    def choose_target(profiles, source):
+        source_token = str(source.get("token"))
+        candidate_profiles = [
+            p for p in profiles if str(p.get("token")) != source_token and p.get("path") != source.get("path")
+        ]
+        labels = [f"{item['label']} — {item['count']} Kürzel" for item in candidate_profiles]
+        options = [
+            "Firefox (Lesezeichen-HTML)",
+            "Als XML exportieren",
+            "Profilordner manuell auswählen …",
+        ]
+        choice, accepted = QInputDialog.getItem(
+            None,
+            "Suchkürzel-Transfer",
+            "Ziel für die Suchkürzel auswählen:",
+            labels + options,
+            0,
+            False,
+        )
+        if not accepted:
+            raise module.Cancelled
+        if choice in labels:
+            return "profile", candidate_profiles[labels.index(choice)]
+        return choice, None
+
     def choose_browser(profiles, purpose: str, allow_firefox: bool = False) -> str:
         keys = list(dict.fromkeys(str(profile["browser_key"]) for profile in profiles))
-        choices = [f"{module.BROWSERS[key]['label']} ({sum(profile['browser_key'] == key for profile in profiles)} Profile)" for key in keys]
+        choices = [
+            f"{module.BROWSERS[key]['label']} ({sum(profile['browser_key'] == key for profile in profiles)} {'Profil' if sum(profile['browser_key'] == key for profile in profiles) == 1 else 'Profile'})"
+            for key in keys
+        ]
         if allow_firefox:
             keys.append("firefox")
             choices.append("Firefox (Lesezeichen-HTML)")
@@ -179,6 +231,8 @@ def load_transfer():
 
     module.choose_from_list = choose_from_list
     module.choose_profile = choose_profile
+    module.choose_source_profile = choose_source_profile
+    module.choose_target = choose_target
     module.choose_save_path = choose_save_path
     module.choose_firefox_save_path = choose_firefox_save_path
     module.choose_xml_file = choose_xml_file
@@ -188,65 +242,83 @@ def load_transfer():
     module.browser_running = lambda profile: process_is_running(module.BROWSERS[profile["browser_key"]]["process"])
     module.open_search_settings = lambda profile: QDesktopServices.openUrl(QUrl(module.BROWSERS[profile["browser_key"]]["settings"]))
 
-    def firefox_export_flow(profiles) -> None:
-        profile = module.choose_profile(profiles, "Chrome-/Brave-Quellprofil für Firefox auswählen:")
-        shortcuts = module.read_shortcuts(profile["path"])
-        if not shortcuts:
-            raise module.TransferError("Dieses Profil enthält keine aktiven eigenen Suchkürzel.")
-        filename = f"Firefox-Suchkuerzel-{module.safe_component(profile['label'])}-{module.dt.date.today().isoformat()}.html"
-        destination = choose_firefox_save_path(filename)
-        destination.write_text(module.to_firefox_html(shortcuts, profile["label"]), encoding="utf-8")
+    def export_xml_flow(source, entries) -> None:
+        default_search = module.read_default_search(source) or module.choose_default_search(source)
+        date = module.dt.date.today().isoformat()
+        filename = f"Suchkuerzel-{module.safe_component(source['label'])}-{date}.xml"
+        destination = choose_save_path(filename)
+        destination.write_text(module.to_xml(entries, source["label"], default_search), encoding="utf-8")
         QDesktopServices.openUrl(QUrl.fromLocalFile(str(destination.parent)))
-        alert("Firefox-Datei erstellt", f"{len(shortcuts)} Suchkürzel gespeichert:\n{destination}\n\nIn Firefox die Lesezeichenverwaltung öffnen und „Lesezeichen von HTML importieren“ wählen.")
+        alert(
+            "XML-Export abgeschlossen",
+            f"Von {source['label']} exportiert:\n{len(entries)} Suchkürzel gespeichert\n\n"
+            f"Standardsuche: {default_search['short_name']} ({default_search['keyword']})\n\n"
+            f"Datei:\n{destination}",
+        )
 
-    def direct_transfer_flow(profiles) -> None:
-        source_browser = choose_browser(profiles, "Von welchem Browser sollen die Suchkürzel übernommen werden?")
-        target_browser = choose_browser(profiles, "In welchen Browser sollen die Suchkürzel übertragen werden?", allow_firefox=True)
-        source = choose_browser_profile(profiles, source_browser, "Quellprofil auswählen:")
+    def export_firefox_flow(source, entries) -> None:
+        filename = f"Firefox-Suchkuerzel-{module.safe_component(source['label'])}-{module.dt.date.today().isoformat()}.html"
+        destination = choose_firefox_save_path(filename)
+        destination.write_text(module.to_firefox_html(entries, source["label"]), encoding="utf-8")
+        QDesktopServices.openUrl(QUrl.fromLocalFile(str(destination.parent)))
+        alert(
+            "Firefox-Importdatei erstellt",
+            f"Von {source['label']} exportiert:\n{len(entries)} Suchkürzel\n\n"
+            f"Datei: {destination}\n\n"
+            "In Firefox die Lesezeichenverwaltung öffnen und „Lesezeichen von HTML importieren“ wählen.",
+        )
+
+    def firefox_export_flow(profiles) -> None:
+        source = choose_profile(profiles, "Chrome-/Brave-Quellprofil für Firefox auswählen:")
         entries = module.read_shortcuts(source["path"])
         if not entries:
-            raise module.TransferError(f"Im Quellprofil {source['label']} gibt es keine eigenen Suchkürzel.")
-        if target_browser == "firefox":
-            filename = f"Firefox-Suchkuerzel-{module.safe_component(source['label'])}-{module.dt.date.today().isoformat()}.html"
-            destination = choose_firefox_save_path(filename)
-            destination.write_text(module.to_firefox_html(entries, source["label"]), encoding="utf-8")
-            QDesktopServices.openUrl(QUrl.fromLocalFile(str(destination.parent)))
-            alert(
-                "Firefox-Importdatei erstellt",
-                f"Von {source['label']} exportiert:\n{len(entries)} Suchkürzel\n\n"
-                f"Datei: {destination}\n\n"
-                "In Firefox die Lesezeichenverwaltung öffnen und „Lesezeichen von HTML importieren“ wählen.",
-            )
-            return
+            raise module.TransferError("Dieses Profil enthält keine aktiven eigenen Suchkürzel.")
+        export_firefox_flow(source, entries)
 
-        target = choose_browser_profile(profiles, target_browser, "Zielprofil auswählen:")
-        default_search = module.read_default_search(source) or module.choose_default_search(source)
+    def export_flow(profiles) -> None:
+        source = choose_profile(profiles, "Quellprofil für den XML-Export auswählen:")
+        entries = module.read_shortcuts(source["path"])
+        if not entries:
+            raise module.TransferError("Dieses Profil enthält keine aktiven eigenen Suchkürzel.")
+        export_xml_flow(source, entries)
+
+    def import_xml_flow(profiles) -> None:
+        xml_path = choose_xml_file()
+        entries, default_search = module.parse_transfer_xml(xml_path.read_text(encoding="utf-8"))
+        target = choose_profile(profiles, "Zielprofil für den XML-Import auswählen:")
         entries = module.entries_for_import(target["path"], entries, default_search)
         result = module.preview(target["path"], entries)
         if result["conflicts"]:
             raise module.TransferError("Geschützte oder mehrdeutige Kürzel-Kollisionen: " + ", ".join(result["conflicts"][:5]))
-
+        default_message = (
+            f"\nStandardsuche: {default_search['short_name']} ({default_search['keyword']})\n"
+            if default_search
+            else "\nStandardsuche: nicht in dieser XML enthalten\n"
+        )
         confirm(
-            "Übertragung bestätigen",
-            f"Von: {source['label']}\nNach: {target['label']}\n\n"
-            f"{result['added']} neu\n{result['updated']} aktualisiert\n"
-            f"{result['unchanged']} unverändert\n\n"
+            "Import bestätigen",
+            f"Ziel: {target['label']}\n\n{result['added']} neu\n{result['updated']} zu aktualisieren\n"
+            f"{result['unchanged']} unverändert\n{default_message}\n"
             "Nichts wird gelöscht. Vorher wird eine Sicherung des Zielprofils erstellt.",
-            "Übertragen",
+            "Importieren",
         )
-        module.wait_until_import_ready(target, require_closed=True)
+        module.wait_until_import_ready(target, require_closed=bool(default_search))
         final, backup_path = module.apply_import(target["path"], target["label"], entries)
-        alert(
-            "Übertragung abgeschlossen",
-            f"Von {source['label']} nach {target['label']} übertragen:\n"
-            f"{final['added']} neu, {final['updated']} aktualisiert, {final['unchanged']} unverändert.\n\n"
-            f"Sicherung des Zielprofils:\n{backup_path}\n\n"
-            f"Öffne im Zielbrowser die Sucheinstellungen und wähle dort „{default_search['short_name']}“ als Standardsuche.",
+        default_finish = (
+            f"\n\nAls Nächstes öffnen sich die Browser-Einstellungen. Dort bitte „{default_search['short_name']}“ als Standardsuche auswählen."
+            if default_search
+            else ""
         )
-        module.open_search_settings(target)
+        alert(
+            "Import abgeschlossen",
+            f"{final['added']} neu, {final['updated']} aktualisiert, {final['unchanged']} unverändert.\n\n"
+            f"Sicherung:\n{backup_path}{default_finish}",
+        )
+        if default_search:
+            module.open_search_settings(target)
 
     def restore_flow(profiles) -> None:
-        profile = module.choose_profile(profiles, "Zielprofil für die Wiederherstellung auswählen:")
+        target = choose_profile(profiles, "Zielprofil für die Wiederherstellung auswählen:")
         filename, _ = QFileDialog.getOpenFileName(None, "Suchkürzel-Sicherung auswählen", str(module.BACKUP_DIR), "SQLite-Sicherung (*.sqlite)")
         if not filename:
             raise module.Cancelled
@@ -257,13 +329,84 @@ def load_transfer():
             raise module.TransferError("Die ausgewählte Datei ist keine lesbare Suchkürzel-Sicherung.") from error
         if not entries:
             raise module.TransferError("Die Sicherung enthält keine eigenen Suchkürzel.")
-        result = module.preview(profile["path"], entries)
+        result = module.preview(target["path"], entries)
         if result["conflicts"]:
             raise module.TransferError("Geschützte oder doppelte Kürzel kollidieren: " + ", ".join(result["conflicts"][:5]))
-        confirm("Sicherung wiederherstellen", f"Ziel: {profile['label']}\nSicherung: {backup_path.name}\n\n{result['added']} neu\n{result['updated']} werden zurückgesetzt\n{result['unchanged']} unverändert\n\nAndere Profil- und Browserdaten bleiben unberührt.", "Wiederherstellen")
-        module.wait_until_import_ready(profile, require_closed=True)
-        final, current_backup = module.apply_import(profile["path"], profile["label"], entries)
-        alert("Wiederherstellung abgeschlossen", f"{final['added']} neu, {final['updated']} zurückgesetzt, {final['unchanged']} unverändert.\n\nSicherung des vorherigen Stands:\n{current_backup}")
+        confirm(
+            "Sicherung wiederherstellen",
+            f"Ziel: {target['label']}\nSicherung: {backup_path.name}\n\n{result['added']} neu\n{result['updated']} werden zurückgesetzt\n{result['unchanged']} unverändert\n\nAndere Profil- und Browserdaten bleiben unberührt.",
+            "Wiederherstellen",
+        )
+        module.wait_until_import_ready(target, require_closed=True)
+        final, current_backup = module.apply_import(target["path"], target["label"], entries)
+        alert(
+            "Wiederherstellung abgeschlossen",
+            f"{final['added']} neu, {final['updated']} zurückgesetzt, {final['unchanged']} unverändert.\n\nSicherung des vorherigen Stands:\n{current_backup}",
+        )
+
+    def direct_transfer_flow(profiles) -> None:
+        source_kind, source = choose_source_profile(profiles)
+        if source_kind == "Profilordner manuell auswählen …":
+            source = choose_manual_profile()
+        elif source_kind == "Aus XML-Datei importieren …":
+            import_xml_flow(profiles)
+            return
+        elif source_kind == "Sicherung wiederherstellen …":
+            restore_flow(profiles)
+            return
+
+        entries = module.read_shortcuts(source["path"])
+        if not entries:
+            raise module.TransferError(f"Im Quellprofil {source['label']} gibt es keine eigenen Suchkürzel.")
+
+        target_kind, target = choose_target(profiles, source)
+        if target_kind == "Firefox (Lesezeichen-HTML)":
+            export_firefox_flow(source, entries)
+            return
+        elif target_kind == "Als XML exportieren":
+            export_xml_flow(source, entries)
+            return
+        elif target_kind == "Profilordner manuell auswählen …":
+            target = choose_manual_profile()
+            if target["path"] == source["path"]:
+                raise module.TransferError("Quell- und Zielprofil dürfen nicht identisch sein.")
+
+        # Standardsuche nur übernehmen, wenn die Quelle überhaupt eine hat. Sonst bleibt die
+        # Standardsuche des Zielprofils unangetastet, statt eine erfundene einzutragen.
+        default_search = module.read_default_search(source)
+        import_entries = module.entries_for_import(target["path"], entries, default_search)
+        result = module.preview(target["path"], import_entries)
+        if result["conflicts"]:
+            raise module.TransferError("Geschützte oder mehrdeutige Kürzel-Kollisionen: " + ", ".join(result["conflicts"][:5]))
+
+        default_info = (
+            f"\nStandardsuche: {default_search['short_name']} ({default_search['keyword']})\n"
+            if default_search
+            else ""
+        )
+        confirm(
+            "Übertragung bestätigen",
+            f"Von: {source['label']}\nNach: {target['label']}\n\n"
+            f"{result['added']} neu\n{result['updated']} aktualisiert\n"
+            f"{result['unchanged']} unverändert{default_info}\n\n"
+            "Nichts wird gelöscht. Vorher wird eine Sicherung des Zielprofils erstellt.",
+            "Übertragen",
+        )
+        module.wait_until_import_ready(target, require_closed=True)
+        final, backup_path = module.apply_import(target["path"], target["label"], import_entries)
+        default_note = (
+            f"\n\nÖffne im Zielbrowser die Sucheinstellungen und wähle dort „{default_search['short_name']}“ als Standardsuche."
+            if default_search
+            else ""
+        )
+        alert(
+            "Übertragung abgeschlossen",
+            f"Von {source['label']} nach {target['label']} übertragen:\n"
+            f"{final['added']} neu, {final['updated']} aktualisiert, {final['unchanged']} unverändert.\n\n"
+            f"Sicherung des Zielprofils:\n{backup_path}{default_note}",
+        )
+        if default_search:
+            module.open_search_settings(target)
 
     def app_main() -> int:
         try:
@@ -279,16 +422,16 @@ def load_transfer():
                         check=False,
                     ).returncode == 0
                 settings_hint = (
-                    "Die Systemeinstellungen wurden geöffnet. Füge dort „SuchkuerzelTransfer.app“ zum Festplattenvollzugriff hinzu und starte die App danach neu."
-                    if settings_opened
-                    else "Öffne Systemeinstellungen → Datenschutz & Sicherheit → Festplattenvollzugriff, füge „SuchkuerzelTransfer.app“ hinzu und starte die App danach neu."
+                    "Falls „SuchkuerzelTransfer.app“ bereits in der Liste steht und aktiv ist:\n"
+                    "Bitte den Eintrag mit „-“ entfernen und mit „+“ neu hinzufügen (macOS erfordert dies nach App-Updates), danach die App neu starten.\n\n"
+                    "Alternativ: Du kannst Chrome- und Brave-Profile jederzeit direkt über „Profilordner manuell auswählen …“ anwählen."
                 )
                 QMessageBox.warning(
                     None,
                     "Browserzugriff eingeschränkt",
-                    "Einige Browserprofile sind für diese App gesperrt und wurden übersprungen.\n\n"
+                    "Einige Browserprofile sind für diese App durch macOS gesperrt und wurden übersprungen.\n\n"
                     + "\n".join(module.DISCOVERY_WARNINGS)
-                    + "\n\nDie zugänglichen Profile können trotzdem verwendet werden. "
+                    + "\n\n"
                     + settings_hint,
                 )
             direct_transfer_flow(profiles)
