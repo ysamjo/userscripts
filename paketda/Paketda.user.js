@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Paketda Packlink Button & Adblock Remover
 // @namespace    http://tampermonkey.net/
-// @version      2.0
+// @version      2.1
 // @description  Ergänzt Packlink-Buttons, Klick-n-Schick als passendes Angebot und entfernt den Adblock-Hinweis.
 // @match        https://www.paketda.de/paket-preis-rechner.php*
 // @icon         https://www.google.com/s2/favicons?sz=64&domain=paketda.de
@@ -283,6 +283,17 @@
 
     addKlickNSchickOffer();
 
+    // Falls die Tabelle noch nicht im DOM ist (Seite noch nicht fertig), nochmal versuchen
+    if (fitsKlickNSchick && !document.querySelector('.kns-offer-row')) {
+        const knsRetry = new MutationObserver(() => {
+            if (document.querySelector('#desktop_tabelle tbody') || document.querySelector('#tabelle_porto_online tbody')) {
+                addKlickNSchickOffer();
+                if (document.querySelector('.kns-offer-row')) knsRetry.disconnect();
+            }
+        });
+        knsRetry.observe(document.body, { childList: true, subtree: true });
+    }
+
     // --- 5. Öffentlichen Packlink-Ab-Preis in die Angebotsliste einfügen ---
     function packlinkOfferDetails(productName) {
         const wrapper = document.createDocumentFragment();
@@ -354,6 +365,17 @@
     }
 
     addPacklinkOffer();
+
+    // Falls die Tabelle noch nicht im DOM ist, nochmal versuchen
+    if (fitsPacklink && !document.querySelector('.packlink-offer-row')) {
+        const plRetry = new MutationObserver(() => {
+            if (document.querySelector('#desktop_tabelle tbody') || document.querySelector('#tabelle_porto_online tbody')) {
+                addPacklinkOffer();
+                if (document.querySelector('.packlink-offer-row')) plRetry.disconnect();
+            }
+        });
+        plRetry.observe(document.body, { childList: true, subtree: true });
+    }
 
     // --- 6. Novapost-Preise zusätzlich mit 25 % Rabatt anzeigen ---
     function parseEuro(value) {
