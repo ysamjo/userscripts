@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Paketda Packlink Button & Adblock Remover
 // @namespace    http://tampermonkey.net/
-// @version      2.1
+// @version      2.2
 // @description  Ergänzt Packlink-Buttons, Klick-n-Schick als passendes Angebot und entfernt den Adblock-Hinweis.
 // @match        https://www.paketda.de/paket-preis-rechner.php*
 // @icon         https://www.google.com/s2/favicons?sz=64&domain=paketda.de
@@ -55,7 +55,7 @@
     const [longest, middle, shortest] = dimensions;
     const girth = longest + (2 * middle) + (2 * shortest);
     const hasPackageData = [weight, longest, middle, shortest].every(Number.isFinite);
-    const isGermany = !land;
+    const isGermany = !land || String(land).trim() === '' || String(land).toLowerCase() === 'de' || String(land).toLowerCase() === 'deutschland';
     const fitsKlickNSchick = hasPackageData
         && isGermany
         && weight > 0
@@ -235,14 +235,14 @@
     }
 
     function addKlickNSchickOffer() {
-        if (!fitsKlickNSchick || document.querySelector('.kns-offer-row')) return;
+        if (!fitsKlickNSchick) return;
 
         const price = weight <= 2 ? 4.90 : 5.80;
         const netPrice = price / 1.19;
         const productName = `Klick-n-Schick Paket bis ${weight <= 2 ? 2 : 10} kg`;
 
         const desktopBody = document.querySelector('#desktop_tabelle tbody');
-        if (desktopBody) {
+        if (desktopBody && !desktopBody.querySelector('.kns-offer-row')) {
             const row = document.createElement('tr');
             row.className = 'kns-offer-row';
 
@@ -266,7 +266,7 @@
         }
 
         const mobileBody = document.querySelector('#tabelle_porto_online tbody');
-        if (mobileBody) {
+        if (mobileBody && !mobileBody.querySelector('.kns-offer-row')) {
             const row = document.createElement('tr');
             row.className = 'kns-offer-row kns-offer-row-mobile';
 
@@ -284,11 +284,13 @@
     addKlickNSchickOffer();
 
     // Falls die Tabelle noch nicht im DOM ist (Seite noch nicht fertig), nochmal versuchen
-    if (fitsKlickNSchick && !document.querySelector('.kns-offer-row')) {
+    if (fitsKlickNSchick) {
         const knsRetry = new MutationObserver(() => {
-            if (document.querySelector('#desktop_tabelle tbody') || document.querySelector('#tabelle_porto_online tbody')) {
-                addKlickNSchickOffer();
-                if (document.querySelector('.kns-offer-row')) knsRetry.disconnect();
+            addKlickNSchickOffer();
+            const hasDesktop = !document.querySelector('#desktop_tabelle') || document.querySelector('#desktop_tabelle .kns-offer-row');
+            const hasMobile = !document.querySelector('#tabelle_porto_online') || document.querySelector('#tabelle_porto_online .kns-offer-row');
+            if (hasDesktop && hasMobile && document.querySelector('.kns-offer-row')) {
+                knsRetry.disconnect();
             }
         });
         knsRetry.observe(document.body, { childList: true, subtree: true });
@@ -318,14 +320,14 @@
     }
 
     function addPacklinkOffer() {
-        if (!fitsPacklink || document.querySelector('.packlink-offer-row')) return;
+        if (!fitsPacklink) return;
 
         const netPrice = packlinkDpdTariff.netPrice;
         const price = netPrice * 1.19;
         const productName = `Packlink DPD Paketshop ${packlinkDpdTariff.size} (bis 20 kg)`;
 
         const desktopBody = document.querySelector('#desktop_tabelle tbody');
-        if (desktopBody) {
+        if (desktopBody && !desktopBody.querySelector('.packlink-offer-row')) {
             const row = document.createElement('tr');
             row.className = 'packlink-offer-row';
 
@@ -349,7 +351,7 @@
         }
 
         const mobileBody = document.querySelector('#tabelle_porto_online tbody');
-        if (mobileBody) {
+        if (mobileBody && !mobileBody.querySelector('.packlink-offer-row')) {
             const row = document.createElement('tr');
             row.className = 'packlink-offer-row packlink-offer-row-mobile';
 
@@ -367,11 +369,13 @@
     addPacklinkOffer();
 
     // Falls die Tabelle noch nicht im DOM ist, nochmal versuchen
-    if (fitsPacklink && !document.querySelector('.packlink-offer-row')) {
+    if (fitsPacklink) {
         const plRetry = new MutationObserver(() => {
-            if (document.querySelector('#desktop_tabelle tbody') || document.querySelector('#tabelle_porto_online tbody')) {
-                addPacklinkOffer();
-                if (document.querySelector('.packlink-offer-row')) plRetry.disconnect();
+            addPacklinkOffer();
+            const hasDesktop = !document.querySelector('#desktop_tabelle') || document.querySelector('#desktop_tabelle .packlink-offer-row');
+            const hasMobile = !document.querySelector('#tabelle_porto_online') || document.querySelector('#tabelle_porto_online .packlink-offer-row');
+            if (hasDesktop && hasMobile && document.querySelector('.packlink-offer-row')) {
+                plRetry.disconnect();
             }
         });
         plRetry.observe(document.body, { childList: true, subtree: true });
@@ -436,8 +440,6 @@
     addNovapostDiscounts();
 
     // --- 7. Vorhandenen Brief-Link durch die drei Schnellbuttons ersetzen ---
-    if (!hasPackageData) return;
-
     const briefLink = document.querySelector('a[href*="deutschepost.de/de/p/portoberater.html"]');
     const container = briefLink?.parentElement;
     if (!briefLink || !container || document.querySelector('.custom-btn-modern')) return;
