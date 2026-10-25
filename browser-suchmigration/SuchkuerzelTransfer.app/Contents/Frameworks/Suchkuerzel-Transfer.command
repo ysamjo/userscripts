@@ -1,0 +1,1 @@
+../Resources/Suchkuerzel-Transfer.command

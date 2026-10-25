@@ -1,4 +1,5 @@
 # PyInstaller-Spezifikation: auf Windows, macOS und Linux jeweils lokal bauen.
+import subprocess
 from pathlib import Path
 
 app_dir = Path(SPECPATH)
@@ -52,3 +53,15 @@ exe = EXE(
 coll = COLLECT(exe, a.binaries, a.datas, strip=False, upx=False, name="SuchkuerzelTransfer")
 if __import__("sys").platform == "darwin":
     app = BUNDLE(coll, name="SuchkuerzelTransfer.app", bundle_identifier="de.suchkuerzel.transfer")
+    subprocess.run(
+        [
+            "codesign",
+            "-s",
+            "-",
+            "-f",
+            "--deep",
+            '-r=designated => identifier "de.suchkuerzel.transfer"',
+            str(app_dir / "dist" / "SuchkuerzelTransfer.app"),
+        ],
+        check=False,
+    )
