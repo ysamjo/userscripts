@@ -26,6 +26,7 @@ MAX_XML_SIZE = 750_000
 MAX_FIREFOX_HTML_SIZE = 1_500_000
 MAX_SHORTCUTS = 1_000
 BACKUP_DIR = Path.home() / "Documents" / "Suchkuerzel-Backups"
+DISCOVERY_WARNINGS: list[str] = []
 BROWSERS = {
     "chrome": {
         "label": "Google Chrome",
@@ -251,8 +252,11 @@ def with_read_db(path: Path, operation):
         if connection is not None:
             connection.close()
     with stable_snapshot(path) as snapshot:
-        with open_db(snapshot, read_only=True) as connection:
+        connection = open_db(snapshot, read_only=True)
+        try:
             return operation(connection)
+        finally:
+            connection.close()
 
 
 def custom_conditions(existing_columns: set[str]) -> list[str]:
@@ -378,14 +382,22 @@ def choose_default_search(profile: dict[str, Any]) -> dict[str, str]:
 
 def discover_profiles() -> list[dict[str, Any]]:
     result = []
+    DISCOVERY_WARNINGS.clear()
     for browser_key, browser in BROWSERS.items():
         root = browser["root"]
-        if not root.is_dir():
+        try:
+            if not root.is_dir():
+                continue
+            candidates = sorted(
+                (item for item in root.iterdir() if item.is_dir() and (item / "Web Data").is_file()),
+                key=profile_sort_key,
+            )
+        except PermissionError as error:
+            DISCOVERY_WARNINGS.append(f"{browser['label']}: kein Zugriff auf {root} ({error})")
             continue
-        candidates = sorted(
-            (item for item in root.iterdir() if item.is_dir() and (item / "Web Data").is_file()),
-            key=profile_sort_key,
-        )
+        except OSError as error:
+            DISCOVERY_WARNINGS.append(f"{browser['label']}: Profilordner nicht lesbar: {error}")
+            continue
         for directory in candidates:
             try:
                 count = len(read_shortcuts(directory / "Web Data"))
@@ -846,11 +858,15 @@ def self_test() -> None:
           enforced_by_policy INTEGER DEFAULT 0, featured_by_policy INTEGER DEFAULT 0, url_hash BLOB
         );
         """
-        with sqlite3.connect(db_path) as connection:
+        connection = sqlite3.connect(db_path)
+        try:
             connection.executescript(schema)
             connection.execute(
                 "INSERT INTO keywords (short_name,keyword,favicon_url,url,input_encodings,is_active,sync_guid) VALUES ('Test','t','','https://example.test/?q={searchTerms}','UTF-8',1,'test-guid')"
             )
+            connection.commit()
+        finally:
+            connection.close()
         (profile_dir / "Preferences").write_text(
             json.dumps({"default_search_provider": {"guid": "test-guid"}}), encoding="utf-8"
         )
