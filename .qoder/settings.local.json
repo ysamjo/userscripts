@@ -1,0 +1,8 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(cd /Users/family/Developer/brickmerge && grep -n -i \"ausroll\\\\|rollout\\\\|deploy\\\\|publish\\\\|veröffentlich\\\\|adbshell\\\\|adb install\\\\|Store\\\\|unpacked\\\\|entpackt\" AGENTS.md | head -60)",
+      "Bash(cd /Users/family/Developer/brickmerge && sed -n '1,70p' AGENTS.md)"
+    ]
+  }
+}
