@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Video Speed Control with Keyboard
 // @description  Mit s und d HTML5-Video-Geschwindigkeit in 0,1-Schritten ändern; r setzt auf 1.0 zurück. Speichert Speed seitenübergreifend.
-// @version      2026-11-01.1
+// @version      2026-11-01.2
 // @author       Vitus Schuhwerk (modifiziert)
 // @license      MIT
 // @homepageURL  https://gist.githubusercontent.com/schuhwerk/67fb4da50652681b857002e1ba2bf071
@@ -61,6 +61,10 @@
     const SPEED_KEY = "playbackSpeed";
     // Sicherheitsnetz, falls der Player die Rate dauerhaft zurücksetzt (Endlosgefecht vermeiden).
     const MAX_RESTORES = 10;
+    // Fenster nach Hotkey/Seek, in dem der Player die Rate nicht selbst bestimmen darf.
+    const GUARD_MS = 1200;
+    // Nur Änderungen direkt nach einem Mausklick gelten als Nutzerwunsch im Player-Menü.
+    const INPUT_MS = 1500;
     // Nach diesen Ereignissen setzt der Player die Rate gern selbst zurück (Spulen, Resume, Qualitätswechsel).
     const MEDIA_EVENTS = [ "loadedmetadata", "play", "playing", "seeking", "seeked" ];
     const transformSpeedKeys = {
@@ -73,6 +77,8 @@
 
     let videoElm;
     let restores = 0;
+    let guardUntil = 0;
+    let lastInputAt = 0;
 
     const clamp = ( s ) => Math.max( MIN, Math.min( Number( s ) || 1, MAX ) );
     const storedSpeed = () => clamp( GM_getValue( SPEED_KEY, 1 ) );
@@ -115,6 +121,7 @@
         }
         s = clamp( s );
         restores = 0;
+        guardUntil = Date.now() + GUARD_MS;
         GM_setValue( SPEED_KEY, s );
         if ( Math.abs( vE.playbackRate - s ) <= EPS ) return;
         easyToast.success( s.toFixed( 2 ) );
@@ -162,27 +169,35 @@
       if (vE?.localName !== "video") return;
       videoElm = vE;
       restores = 0;
+      guardUntil = Date.now() + GUARD_MS;
       keepRate(vE);
     };
     /**
-     * Fremde Rate-Änderung. Zurücksetzen auf 1.00 gilt als Player-Reset (Spulen, Qualitätswechsel,
-     * Resume) und wird sofort korrigiert. Jeder andere Wert kommt aus dem Player-Menü und wird übernommen.
+     * Fremde Rate-Änderung. Gespeicherte Rate gewinnt, solange ein Hotkey/Seek frisch ist oder keine
+     * Eingabe vorausging – dann hat der Player selbst gesetzt (Reset auf 1.00, Wiederherstellen der
+     * alten Rate nach dem Spulen). Nur eine Änderung direkt nach einer Eingabe ist eine Nutzerwahl
+     * im Player-Menü und wird übernommen.
      */
     const onRateChange = (e) => {
       const vE = e.target;
       if (vE?.localName !== "video") return;
       const rate = vE.playbackRate;
       if (Math.abs(rate - storedSpeed()) <= EPS) return;
-      if (isResetRate(rate)) {
-        keepRate(vE);
+      const now = Date.now();
+      const userChoice = now > guardUntil && !isResetRate(rate) && now - lastInputAt < INPUT_MS;
+      if (userChoice) {
+        videoElm = vE;
+        GM_setValue(SPEED_KEY, clamp(rate));
         return;
       }
-      videoElm = vE;
-      GM_setValue(SPEED_KEY, clamp(rate));
+      keepRate(vE);
     };
     return {
       init: () => {
         registerShortcutKeys();
+        [ "pointerdown", "mousedown", "touchstart" ].forEach(type =>
+          document.addEventListener(type, () => { lastInputAt = Date.now(); }, { capture: true, passive: true })
+        );
         MEDIA_EVENTS.forEach(type => document.addEventListener(type, onMedia, true));
         document.addEventListener("ratechange", onRateChange, true);
         const initialVideo = getFirstVideElm();
