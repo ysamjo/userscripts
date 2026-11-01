@@ -82,6 +82,10 @@ function load({ storedSpeed = 1.8, withVideo = true } = {}) {
     video: v, store, toasts, document,
     // Medien-Events erreichen das Dokument nur in der Capture-Phase.
     media(type) { const ev = { type, target: v }; document.dispatchEvent(ev); v.dispatchEvent(ev) },
+    click() {
+      const ev = { type: 'pointerdown', target: makeEl({ localName: 'div' }) }
+      document.dispatchEvent(ev)
+    },
     press(key) {
       const ev = {
         type: 'keydown', key, target: makeEl({ localName: 'body' }),
@@ -137,7 +141,9 @@ const near = (name, actual, expected) =>
   await tick(60)
   near('Resume: Rate = 1.90', a.video.playbackRate, 1.9)
 
-  // 7. Player-Menü (echte Nutzerwahl 1.25) wird übernommen
+  // 7. Player-Menü (echte Nutzerwahl 1.25 nach Klick) wird übernommen
+  await tick(1300) // Schutzfenster nach dem letzten Medien-Ereignis abwarten
+  a.click()
   a.video.playbackRate = 1.25
   await tick(60)
   near('Player-Menü 1.25: Rate bleibt 1.25', a.video.playbackRate, 1.25)
@@ -148,6 +154,21 @@ const near = (name, actual, expected) =>
   await tick(60)
   near('Hotkey r: Rate = 1.00', a.video.playbackRate, 1)
   near('Hotkey r: gespeichert = 1.00', a.store.playbackSpeed, 1)
+
+  // 8b. r muss auch gegen den Player halten: der setzt nach dem Spulen seine alte Rate wieder
+  a.media('seeking')
+  a.video.playbackRate = 1.25
+  a.media('seeked')
+  await tick(60)
+  near('Nach r + Seek: Rate bleibt 1.00', a.video.playbackRate, 1)
+  near('Nach r + Seek: gespeichert bleibt 1.00', a.store.playbackSpeed, 1)
+
+  // 8c. r muss auch gegen einen späten Player-Reset (ohne Eingabe) halten
+  await tick(2100)
+  a.video.playbackRate = 1.25
+  await tick(60)
+  near('Nach r + später Player-Reset: Rate bleibt 1.00', a.video.playbackRate, 1)
+  near('Nach r + später Player-Reset: gespeichert bleibt 1.00', a.store.playbackSpeed, 1)
 
   // 9. Ohne Video keine Fehler
   const b = load({ withVideo: false, storedSpeed: 2 })
