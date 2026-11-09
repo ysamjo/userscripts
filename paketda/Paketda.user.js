@@ -1,8 +1,8 @@
 // ==UserScript==
 // @name         Paketda Packlink Button & Adblock Remover
 // @namespace    http://tampermonkey.net/
-// @version      2.2
-// @description  Ergänzt Packlink-Buttons, Klick-n-Schick als passendes Angebot und entfernt den Adblock-Hinweis.
+// @version      2.3
+// @description  Ergänzt Packlink-Buttons, Klick-n-Schick mit Paketmaßen als passendes Angebot und entfernt den Adblock-Hinweis.
 // @match        https://www.paketda.de/paket-preis-rechner.php*
 // @icon         https://www.google.com/s2/favicons?sz=64&domain=paketda.de
 // @run-at       document-idle
@@ -199,10 +199,20 @@
         return `€ ${value.toFixed(2).replace('.', ',')}`;
     }
 
+    function getKlickNSchickUrl() {
+        if (!hasPackageData) return KNS_URL;
+        const p = new URLSearchParams();
+        if (longest) p.set('laenge', longest);
+        if (middle) p.set('breite', middle);
+        if (shortest) p.set('hoehe', shortest);
+        if (weight) p.set('gewicht', weight);
+        return `${KNS_URL}?${p.toString()}`;
+    }
+
     function offerDetails(productName) {
         const wrapper = document.createDocumentFragment();
         const link = document.createElement('a');
-        link.href = KNS_URL;
+        link.href = getKlickNSchickUrl();
         link.target = '_blank';
         link.rel = 'noopener noreferrer nofollow';
 
@@ -481,7 +491,7 @@
         'Versenden mit Packlink',
         true
     );
-    const klickButton = makeButton('btn-klick', KNS_URL, truckIcon, 'Klick-n-Schick', true);
+    const klickButton = makeButton('btn-klick', getKlickNSchickUrl(), truckIcon, 'Klick-n-Schick', true);
     const resultButton = makeButton('btn-anchor', '#ergebnis', arrowDownIcon, 'Zum Ergebnis');
 
     briefLink.remove();
