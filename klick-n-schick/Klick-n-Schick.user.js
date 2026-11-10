@@ -1,8 +1,8 @@
 // ==UserScript==
 // @name         Klick-n-Schick PowerTools
 // @namespace    http://tampermonkey.net/
-// @version      1.1.0
-// @description  Erleichtert die Nutzung von Klick-n-Schick: Login speichern & Auto-Login, Sperrgut standardmäßig aktivieren, Maße aus URL übernehmen, eBay automatisch importieren, Warenkorb direkt zur Kasse leiten, immer DPD vorauswählen, Paketschein-PDF Auto-Download, 1-Klick Paket-Presets und Adress-/Tracking-Kopierer.
+// @version      1.2.0
+// @description  Erleichtert die Nutzung von Klick-n-Schick: Login speichern & Auto-Login, Sperrgut standardmäßig auf Nein, LEGO-Presets (Mittel, Groß/UCS, Titanic), Maße aus URL übernehmen, eBay-Verkäufe automatisch importieren, immer DPD vorauswählen, PDF-Auto-Download, Adress- & Tracking-Kopierer und Warenkorb direkt zur Kasse leiten.
 // @author       Andreas Stegmann
 // @match        https://www.klick-n-schick.com/portal/*
 // @match        https://klick-n-schick.com/portal/*
@@ -59,7 +59,7 @@
     const config = {
         saveLogin: storage.get('cfg_saveLogin', true),
         autoLogin: storage.get('cfg_autoLogin', true),
-        alwaysSperrgut: storage.get('cfg_alwaysSperrgut', true),
+        defaultSperrgutNo: storage.get('cfg_defaultSperrgutNo', true),
         urlDimensions: storage.get('cfg_urlDimensions', true),
         autoImportEbay: storage.get('cfg_autoImportEbay', true),
         autoCheckout: storage.get('cfg_autoCheckout', true),
@@ -101,7 +101,6 @@
         return null;
     }
 
-    // Maße ermitteln: eigene URL -> Parent URL -> sessionStorage
     function resolveDimensions() {
         let dims = parseDimensionParams(window.location.search);
         if (dims) {
@@ -138,7 +137,7 @@
     }
 
     // --- 3. UI-Hinweis-Banner (Toast) ---
-    function showToast(message, type = 'info', duration = 3500) {
+    function showToast(message, type = 'info', duration = 3000) {
         const id = 'kns-toast-container';
         let container = document.getElementById(id);
         if (!container) {
@@ -163,7 +162,7 @@
             pointer-events: auto;
             background: ${type === 'success' ? '#10b981' : type === 'warn' ? '#f59e0b' : '#1e40af'};
             color: #ffffff;
-            padding: 10px 16px;
+            padding: 9px 14px;
             border-radius: 6px;
             box-shadow: 0 4px 12px rgba(0,0,0,0.25);
             font-size: 13px;
@@ -312,44 +311,68 @@
         });
     }
 
-    // --- 5. FEATURE: Sperrgut immer anhaken ---
-    function setupAlwaysSperrgut() {
-        if (!config.alwaysSperrgut) return;
+    // --- 5. FEATURE: Sperrgut standardmäßig auf NEIN ---
+    function setupDefaultSperrgutNo() {
+        if (!config.defaultSperrgutNo) return;
 
         const rbYes = document.querySelector('#ContentPlaceHolder1_rbSperrgutYes');
         const rbNo = document.querySelector('#ContentPlaceHolder1_rbSperrgutNo');
         const hfSperrgut = document.querySelector('#ContentPlaceHolder1_hfSperrgut');
 
-        if (rbYes && !rbYes.checked) {
-            rbYes.checked = true;
-            if (rbNo) rbNo.checked = false;
-            if (hfSperrgut) hfSperrgut.value = 'true';
+        if (rbNo && !rbNo.checked) {
+            rbNo.checked = true;
+            if (rbYes) rbYes.checked = false;
+            if (hfSperrgut) hfSperrgut.value = 'false';
 
-            rbYes.dispatchEvent(new Event('change', { bubbles: true }));
+            rbNo.dispatchEvent(new Event('change', { bubbles: true }));
 
             if (window.$) {
                 try {
-                    window.$('#ContentPlaceHolder1_rbSperrgutYes').prop('checked', true).trigger('change');
-                    window.$('#ContentPlaceHolder1_hfSperrgut').val('true');
+                    window.$('#ContentPlaceHolder1_rbSperrgutNo').prop('checked', true).trigger('change');
+                    window.$('#ContentPlaceHolder1_hfSperrgut').val('false');
                 } catch (e) {}
             }
         }
-
-        const sperrgutCheckboxes = document.querySelectorAll(`
-            input[type="checkbox"][id*="sperrgut" i],
-            input[type="checkbox"][name*="sperrgut" i],
-            input[type="radio"][value*="sperrgut" i]
-        `);
-        sperrgutCheckboxes.forEach((cb) => {
-            if (!cb.checked && !cb.disabled) {
-                cb.checked = true;
-                cb.dispatchEvent(new Event('change', { bubbles: true }));
-                cb.dispatchEvent(new Event('click', { bubbles: true }));
-            }
-        });
     }
 
-    // --- 6. FEATURE 1: 1-Klick Paket-Presets im Packstück-Popup ---
+    // --- 6. POPUP-HÖHE ANPASSEN (Kein Abschneiden mehr!) ---
+    function fixPopupHeight() {
+        if (!isIframe) return;
+        try {
+            document.body.style.setProperty('overflow-y', 'auto', 'important');
+            document.documentElement.style.setProperty('overflow-y', 'auto', 'important');
+
+            if (window.parent && window.parent.document) {
+                const pc = window.parent.document.querySelector('.popupcontent');
+                const iframe = window.parent.document.querySelector('.popupcontent iframe');
+                if (pc && iframe) {
+                    pc.style.setProperty('min-height', '520px', 'important');
+                    iframe.style.setProperty('min-height', '520px', 'important');
+                    iframe.style.setProperty('height', '520px', 'important');
+                }
+            }
+        } catch (e) {}
+    }
+
+    // Auf der Hauptseite Modal-Container für Packstücke vergrößern
+    function ensureParentPopupHeight() {
+        if (isIframe) return;
+        const pc = document.querySelector('.popupcontent');
+        const iframe = pc?.querySelector('iframe');
+        if (pc && iframe) {
+            const src = (iframe.getAttribute('src') || iframe.src || '').toLowerCase();
+            if (src.includes('packstueck') || src.includes('addpack') || src === '' || src === 'about:blank') {
+                const currentH = Number.parseInt(pc.style.height || iframe.getAttribute('height') || '0', 10);
+                if (currentH < 520) {
+                    pc.style.setProperty('min-height', '520px', 'important');
+                    iframe.style.setProperty('min-height', '520px', 'important');
+                    iframe.style.setProperty('height', '520px', 'important');
+                }
+            }
+        }
+    }
+
+    // --- 7. FEATURE: 1-Klick Paket-Presets (LEGO RTS Kartons) ---
     function setupPresetsInPopup() {
         if (!config.enablePresets) return;
 
@@ -360,57 +383,65 @@
 
         if (!txtLaenge || !txtBreite || !txtHoehe || document.getElementById('kns-presets-toolbar')) return;
 
+        // Overflow-Sicherung im Iframe
+        try {
+            document.body.style.overflowY = 'auto';
+            document.documentElement.style.overflowY = 'auto';
+        } catch (e) {}
+
         const toolbar = document.createElement('div');
         toolbar.id = 'kns-presets-toolbar';
         toolbar.style.cssText = `
-            margin: 6px 0 12px 0;
-            padding: 8px 10px;
-            background: #eff6ff;
-            border: 1px solid #bfdbfe;
+            margin: 4px 0 8px 0;
+            padding: 5px 8px;
+            background: #f0fdf4;
+            border: 1px solid #bbf7d0;
             border-radius: 6px;
             display: flex;
             align-items: center;
             flex-wrap: wrap;
-            gap: 6px;
-            font-size: 12px;
+            gap: 5px;
+            font-size: 11px;
             font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
         `;
 
         const label = document.createElement('span');
-        label.style.cssText = 'font-weight: 700; color: #1e40af; margin-right: 2px;';
-        label.textContent = '📦 Schnell-Presets:';
+        label.style.cssText = 'font-weight: 700; color: #15803d; margin-right: 2px; white-space: nowrap;';
+        label.textContent = '📦 LEGO-Presets:';
         toolbar.appendChild(label);
 
+        // RTS-Kartonmaße wie gewünscht
         const presets = [
-            { label: 'S (30×20×15 / 1kg)', l: 30, b: 20, h: 15, g: 1 },
-            { label: 'M (50×30×15 / 2kg)', l: 50, b: 30, h: 15, g: 2 },
-            { label: 'L (60×40×30 / 5kg)', l: 60, b: 40, h: 30, g: 5 },
-            { label: 'Lego (70×40×30 / 4kg)', l: 70, b: 40, h: 30, g: 4 },
-            { label: 'Sperrgut (120×60×60 / 10kg)', l: 120, b: 60, h: 60, g: 10 }
+            { label: 'Klein (30×20×15 / 1kg)', l: 30, b: 20, h: 15, g: 1.0, title: 'Kleine Sets / Speed Champions' },
+            { label: 'Mittel (60×39×10 / 2.5kg)', l: 60, b: 39, h: 10, g: 2.5, title: 'AT-AT 75288 u. ä. (OVP ca. 58,2×37,8×8,7)' },
+            { label: 'Groß / UCS (59×49×18 / 5kg)', l: 59, b: 49, h: 18, g: 5.0, title: 'Motorisierter Leuchtturm / Ideas Sets' },
+            { label: 'XL / Titanic (60×50×39 / 12kg)', l: 60, b: 50, h: 39, g: 12.0, title: 'Titanic, Millennium Falcon (große RTS)' }
         ];
 
         presets.forEach((preset) => {
             const btn = document.createElement('button');
             btn.type = 'button';
             btn.textContent = preset.label;
+            btn.title = preset.title;
             btn.style.cssText = `
                 background: #ffffff;
-                color: #1e3a8a;
-                border: 1px solid #93c5fd;
-                padding: 4px 7px;
+                color: #166534;
+                border: 1px solid #86efac;
+                padding: 3px 6px;
                 border-radius: 4px;
                 cursor: pointer;
-                font-weight: 500;
+                font-weight: 600;
                 font-size: 11px;
                 transition: all 0.15s ease;
+                white-space: nowrap;
             `;
             btn.addEventListener('mouseenter', () => {
-                btn.style.background = '#dbeafe';
-                btn.style.borderColor = '#3b82f6';
+                btn.style.background = '#dcfce7';
+                btn.style.borderColor = '#4ade80';
             });
             btn.addEventListener('mouseleave', () => {
                 btn.style.background = '#ffffff';
-                btn.style.borderColor = '#93c5fd';
+                btn.style.borderColor = '#86efac';
             });
             btn.addEventListener('click', (e) => {
                 e.preventDefault();
@@ -431,18 +462,19 @@
                 if (typeof window.tryCalc === 'function') {
                     try { window.tryCalc(); } catch (err) {}
                 }
-                setupAlwaysSperrgut();
+
+                // Sperrgut auf NEIN belassen
+                setupDefaultSperrgutNo();
+                fixPopupHeight();
 
                 const origText = btn.textContent;
                 btn.textContent = '✓ Gesetzt';
-                btn.style.background = '#10b981';
+                btn.style.background = '#15803d';
                 btn.style.color = '#fff';
-                btn.style.borderColor = '#059669';
                 setTimeout(() => {
                     btn.textContent = origText;
                     btn.style.background = '#ffffff';
-                    btn.style.color = '#1e3a8a';
-                    btn.style.borderColor = '#93c5fd';
+                    btn.style.color = '#166534';
                 }, 1000);
             });
             toolbar.appendChild(btn);
@@ -452,9 +484,13 @@
         if (target && target.parentNode) {
             target.parentNode.insertBefore(toolbar, target);
         }
+
+        // Direkt nach Einfügen Höhe im Parent nachjustieren
+        fixPopupHeight();
+        setTimeout(fixPopupHeight, 200);
     }
 
-    // --- 7. FEATURE: Maße aus URL übernehmen ---
+    // --- 8. FEATURE: Maße aus URL übernehmen ---
     function applyDimensions() {
         if (!config.urlDimensions) return;
         const dims = resolveDimensions();
@@ -497,7 +533,8 @@
                     window.tryCalc();
                 } catch (e) {}
             }
-            setupAlwaysSperrgut();
+            setupDefaultSperrgutNo();
+            fixPopupHeight();
             showToast(`Maße eingetragen: ${dims.laenge || '?'}×${dims.breite || '?'}×${dims.hoehe || '?'} cm, ${dims.gewicht || '?'} kg`, 'success');
         }
 
@@ -520,7 +557,6 @@
 
     function patchPopupOpenerLinks() {
         const dims = resolveDimensions();
-        if (!dims) return;
 
         const addLinks = document.querySelectorAll('.hlPaketAdd, a.pakadd');
         addLinks.forEach((link) => {
@@ -530,7 +566,13 @@
             link.addEventListener('click', () => {
                 setTimeout(() => {
                     const iframe = document.querySelector('.popupcontent iframe');
-                    if (iframe && iframe.src && !iframe.src.includes('laenge=')) {
+                    const pc = document.querySelector('.popupcontent');
+                    if (pc && iframe) {
+                        pc.style.height = '510px';
+                        iframe.style.height = '510px';
+                        iframe.setAttribute('height', '510');
+                    }
+                    if (dims && iframe && iframe.src && !iframe.src.includes('laenge=')) {
                         const url = new URL(iframe.src, window.location.href);
                         if (dims.laenge) url.searchParams.set('laenge', dims.laenge);
                         if (dims.breite) url.searchParams.set('breite', dims.breite);
@@ -544,7 +586,7 @@
         });
     }
 
-    // --- 8. FEATURE: eBay automatisch importieren ---
+    // --- 9. FEATURE: eBay automatisch importieren ---
     function setupAutoEbayImport() {
         if (!config.autoImportEbay || isIframe) return;
         if (!currentPath.includes('ebayimport')) return;
@@ -566,11 +608,10 @@
         }, 600);
     }
 
-    // --- 9. FEATURE 3: Immer DPD als Versanddienstleister vorauswählen ---
+    // --- 10. FEATURE: Immer DPD als Versanddienstleister vorauswählen ---
     function setupAlwaysDpd() {
         if (!config.alwaysDpd) return;
 
-        // 1. Versandmethoden-Auswahl in paketversand & ebayimport (#ContentPlaceHolder1_divMethoden)
         const methodContainer = document.querySelector('#ContentPlaceHolder1_divMethoden');
         if (methodContainer) {
             const methodItems = methodContainer.querySelectorAll('div.methodesitem');
@@ -587,7 +628,6 @@
             });
         }
 
-        // 2. Radio-Buttons / Optionen in Zusatzleistungen & Warenkorb
         const dpdRadios = document.querySelectorAll(`
             input[type="radio"][value*="dpd" i],
             input[type="checkbox"][id*="dpd" i]
@@ -601,11 +641,10 @@
         });
     }
 
-    // --- 10. FEATURE 4: Paketschein-PDF Auto-Download ---
+    // --- 11. FEATURE: Paketschein-PDF Auto-Download ---
     function setupAutoPdfDownload() {
         if (!config.autoDownloadPdf) return;
 
-        // A) Direkt im Popup showfile.aspx mit PDF-Iframe
         if (currentPath.includes('showfile.aspx') || isIframe) {
             const dataIframe = document.querySelector('iframe[src*="showdata.aspx"]');
             if (dataIframe && dataIframe.src) {
@@ -627,7 +666,6 @@
             return;
         }
 
-        // B) Auf Erfolgs-/Abschlussseite nach Bezahlung
         const isSuccessPage = currentPath.includes('orderfinish') ||
             currentPath.includes('success') ||
             window.location.search.includes('status=ok') ||
@@ -647,7 +685,7 @@
         }
     }
 
-    // --- 11. FEATURE 5: 1-Klick Adress- & Tracking-Kopierer ---
+    // --- 12. FEATURE: 1-Klick Adress- & Tracking-Kopierer ---
     function setupCopyTools() {
         if (!config.enableCopyTools) return;
 
@@ -780,7 +818,7 @@
         });
     }
 
-    // --- 12. FEATURE: Vom Warenkorb automatisch zur Kasse weiterleiten ---
+    // --- 13. FEATURE: Vom Warenkorb automatisch zur Kasse weiterleiten ---
     function setupAutoCheckout() {
         if (!config.autoCheckout || isIframe) return;
         const isCartPage = currentPath.includes('warenkorb') || currentPath.includes('payment.aspx');
@@ -868,7 +906,7 @@
         }, 1000);
     }
 
-    // --- 13. Komfort-Funktionen: AGB & Cookies ---
+    // --- 14. Komfort-Funktionen: AGB & Cookies ---
     function setupQualityOfLife() {
         if (config.autoCheckAGB) {
             const cbAGB = document.querySelector('#ContentPlaceHolder1_cbAGB');
@@ -890,7 +928,7 @@
         }
     }
 
-    // --- 14. Floating Control Panel (Status & Settings) ---
+    // --- 15. Floating Control Panel (Status & Settings) ---
     function setupControlPanel() {
         if (isIframe || document.getElementById('kns-powertools-panel')) return;
 
@@ -954,6 +992,10 @@
                 </div>
                 <div style="display:flex;flex-direction:column;gap:9px;">
                     <label style="display:flex;align-items:center;gap:8px;cursor:pointer;">
+                        <input type="checkbox" id="cfg_defaultSperrgutNo" ${config.defaultSperrgutNo ? 'checked' : ''}>
+                        <span><strong>Sperrgut auf 'Nein'</strong> erzwingen</span>
+                    </label>
+                    <label style="display:flex;align-items:center;gap:8px;cursor:pointer;">
                         <input type="checkbox" id="cfg_alwaysDpd" ${config.alwaysDpd ? 'checked' : ''}>
                         <span><strong>Immer DPD</strong> als Versandart vorauswählen</span>
                     </label>
@@ -963,7 +1005,7 @@
                     </label>
                     <label style="display:flex;align-items:center;gap:8px;cursor:pointer;">
                         <input type="checkbox" id="cfg_enablePresets" ${config.enablePresets ? 'checked' : ''}>
-                        <span><strong>1-Klick Paket-Presets</strong> im Popup anzeigen</span>
+                        <span><strong>LEGO-Presets</strong> im Popup anzeigen</span>
                     </label>
                     <label style="display:flex;align-items:center;gap:8px;cursor:pointer;">
                         <input type="checkbox" id="cfg_enableCopyTools" ${config.enableCopyTools ? 'checked' : ''}>
@@ -973,10 +1015,6 @@
                     <label style="display:flex;align-items:center;gap:8px;cursor:pointer;">
                         <input type="checkbox" id="cfg_saveLogin" ${config.saveLogin ? 'checked' : ''}>
                         <span>Login speichern & Auto-Fill</span>
-                    </label>
-                    <label style="display:flex;align-items:center;gap:8px;cursor:pointer;">
-                        <input type="checkbox" id="cfg_alwaysSperrgut" ${config.alwaysSperrgut ? 'checked' : ''}>
-                        <span>Sperrgut standardmäßig anhaken</span>
                     </label>
                     <label style="display:flex;align-items:center;gap:8px;cursor:pointer;">
                         <input type="checkbox" id="cfg_urlDimensions" ${config.urlDimensions ? 'checked' : ''}>
@@ -995,7 +1033,7 @@
                     <button id="kns-clear-creds" style="background:#fee2e2;border:1px solid #f87171;color:#b91c1c;padding:4px 8px;border-radius:4px;cursor:pointer;font-size:11px;">
                         Gespeicherte Logins löschen
                     </button>
-                    <span style="font-size:11px;color:#9ca3af;">v1.1.0</span>
+                    <span style="font-size:11px;color:#9ca3af;">v1.2.0</span>
                 </div>
             `;
 
@@ -1004,12 +1042,12 @@
             });
 
             [
+                'cfg_defaultSperrgutNo',
                 'cfg_alwaysDpd',
                 'cfg_autoDownloadPdf',
                 'cfg_enablePresets',
                 'cfg_enableCopyTools',
                 'cfg_saveLogin',
-                'cfg_alwaysSperrgut',
                 'cfg_urlDimensions',
                 'cfg_autoImportEbay',
                 'cfg_autoCheckout'
@@ -1045,13 +1083,14 @@
         document.body.appendChild(modal);
     }
 
-    // --- 15. Initialisierung & MutationObserver ---
+    // --- 16. Initialisierung & MutationObserver ---
     function runAll() {
         setupLoginEnhancements();
-        setupAlwaysSperrgut();
+        setupDefaultSperrgutNo();
         setupPresetsInPopup();
         applyDimensions();
         patchPopupOpenerLinks();
+        ensureParentPopupHeight();
         setupAutoEbayImport();
         setupAlwaysDpd();
         setupAutoPdfDownload();
