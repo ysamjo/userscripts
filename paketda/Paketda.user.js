@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Paketda Packlink Button & Adblock Remover
 // @namespace    http://tampermonkey.net/
-// @version      2.3
+// @version      2.4
 // @description  Ergänzt Packlink-Buttons, Klick-n-Schick mit Paketmaßen als passendes Angebot und entfernt den Adblock-Hinweis.
 // @match        https://www.paketda.de/paket-preis-rechner.php*
 // @icon         https://www.google.com/s2/favicons?sz=64&domain=paketda.de
@@ -41,7 +41,10 @@
     const params = new URLSearchParams(window.location.search);
 
     function readNumber(name) {
-        const rawValue = params.get(name) || document.querySelector(`[name="${name}"]`)?.value || '';
+        const input = document.querySelector(`[name="${name}"]`)
+            || document.getElementById(name)
+            || document.querySelector(`input[name*="${name}" i]`);
+        const rawValue = input?.value || params.get(name) || '';
         return Number.parseFloat(String(rawValue).replace(',', '.'));
     }
 
@@ -200,13 +203,24 @@
     }
 
     function getKlickNSchickUrl() {
-        if (!hasPackageData) return KNS_URL;
+        const curWeight = readNumber('gewicht');
+        const curDims = [readNumber('laenge'), readNumber('breite'), readNumber('hoehe')]
+            .filter(Number.isFinite)
+            .sort((a, b) => b - a);
+
+        const curLongest = curDims.length > 0 ? curDims[0] : (Number.isFinite(longest) ? longest : null);
+        const curMiddle = curDims.length > 1 ? curDims[1] : (Number.isFinite(middle) ? middle : null);
+        const curShortest = curDims.length > 2 ? curDims[2] : (Number.isFinite(shortest) ? shortest : null);
+        const curW = Number.isFinite(curWeight) && curWeight > 0 ? curWeight : (Number.isFinite(weight) ? weight : null);
+
         const p = new URLSearchParams();
-        if (longest) p.set('laenge', longest);
-        if (middle) p.set('breite', middle);
-        if (shortest) p.set('hoehe', shortest);
-        if (weight) p.set('gewicht', weight);
-        return `${KNS_URL}?${p.toString()}`;
+        if (curLongest && curLongest > 0) p.set('laenge', String(curLongest));
+        if (curMiddle && curMiddle > 0) p.set('breite', String(curMiddle));
+        if (curShortest && curShortest > 0) p.set('hoehe', String(curShortest));
+        if (curW && curW > 0) p.set('gewicht', String(curW));
+
+        const qs = p.toString();
+        return qs ? `${KNS_URL}?${qs}` : KNS_URL;
     }
 
     function offerDetails(productName) {
@@ -215,6 +229,12 @@
         link.href = getKlickNSchickUrl();
         link.target = '_blank';
         link.rel = 'noopener noreferrer nofollow';
+        link.addEventListener('pointerdown', () => {
+            link.href = getKlickNSchickUrl();
+        });
+        link.addEventListener('click', () => {
+            link.href = getKlickNSchickUrl();
+        });
 
         const logo = document.createElement('img');
         logo.src = KNS_LOGO;
@@ -492,6 +512,27 @@
         true
     );
     const klickButton = makeButton('btn-klick', getKlickNSchickUrl(), truckIcon, 'Klick-n-Schick', true);
+    klickButton.addEventListener('pointerdown', () => {
+        klickButton.href = getKlickNSchickUrl();
+    });
+    klickButton.addEventListener('click', () => {
+        klickButton.href = getKlickNSchickUrl();
+    });
+
+    ['laenge', 'breite', 'hoehe', 'gewicht'].forEach((name) => {
+        const input = document.querySelector(`[name="${name}"]`)
+            || document.getElementById(name)
+            || document.querySelector(`input[name*="${name}" i]`);
+        if (input) {
+            input.addEventListener('input', () => {
+                klickButton.href = getKlickNSchickUrl();
+            });
+            input.addEventListener('change', () => {
+                klickButton.href = getKlickNSchickUrl();
+            });
+        }
+    });
+
     const resultButton = makeButton('btn-anchor', '#ergebnis', arrowDownIcon, 'Zum Ergebnis');
 
     briefLink.remove();
