@@ -1,15 +1,21 @@
 // ==UserScript==
 // @name         Klick-n-Schick PowerTools
 // @namespace    http://tampermonkey.net/
-// @version      1.2.0
-// @description  Erleichtert die Nutzung von Klick-n-Schick: Login speichern & Auto-Login, Sperrgut standardmäßig auf Nein, LEGO-Presets (Mittel, Groß/UCS, Titanic), Maße aus URL übernehmen, eBay-Verkäufe automatisch importieren, immer DPD vorauswählen, PDF-Auto-Download, Adress- & Tracking-Kopierer und Warenkorb direkt zur Kasse leiten.
+// @version      1.3.0
+// @description  Erleichtert die Nutzung von Klick-n-Schick: Login speichern & Auto-Login, Sperrgut standardmäßig auf Nein, LEGO-Presets (Mittel, Groß/UCS, Titanic), Maße aus URL übernehmen, eBay-Verkäufe automatisch importieren, immer DPD vorauswählen, Paketscheine automatisch zuschneiden & zentrieren (Keynote-Workflow automatisiert), 1-Klick Drucken & PDF-Export, Adress- & Tracking-Kopierer und Warenkorb direkt zur Kasse leiten.
 // @author       Andreas Stegmann
 // @match        https://www.klick-n-schick.com/portal/*
 // @match        https://klick-n-schick.com/portal/*
 // @icon         https://www.klick-n-schick.com/portal/favicon.png
+// @require      https://cdn.jsdelivr.net/npm/pdf-lib@1.17.1/dist/pdf-lib.min.js
 // @grant        GM_setValue
 // @grant        GM_getValue
 // @grant        GM_deleteValue
+// @grant        GM_xmlhttpRequest
+// @connect      klick-n-schick.com
+// @connect      www.klick-n-schick.com
+// @connect      cdn.jsdelivr.net
+// @connect      unpkg.com
 // @run-at       document-end
 // ==/UserScript==
 
@@ -65,6 +71,9 @@
         autoCheckout: storage.get('cfg_autoCheckout', true),
         alwaysDpd: storage.get('cfg_alwaysDpd', true),
         autoDownloadPdf: storage.get('cfg_autoDownloadPdf', true),
+        autoCropPdf: storage.get('cfg_autoCropPdf', true),
+        autoPrintPdf: storage.get('cfg_autoPrintPdf', false),
+        printFormat: storage.get('cfg_printFormat', 'a4_centered'),
         enablePresets: storage.get('cfg_enablePresets', true),
         enableCopyTools: storage.get('cfg_enableCopyTools', true),
         autoCheckAGB: storage.get('cfg_autoCheckAGB', true),
@@ -641,8 +650,289 @@
         });
     }
 
-    // --- 11. FEATURE: Paketschein-PDF Auto-Download ---
+    // --- 10.5 FEATURE: Paketschein-Zuschnitt & Druck-Engine (pdf-lib) ---
+    async function ensurePdfLib() {
+        if (typeof PDFLib !== 'undefined') return PDFLib;
+        if (window.PDFLib) return window.PDFLib;
+        if (window._pdfLibPromise) return window._pdfLibPromise;
+
+        window._pdfLibPromise = new Promise((resolve, reject) => {
+            const s = document.createElement('script');
+            s.src = 'https://cdn.jsdelivr.net/npm/pdf-lib@1.17.1/dist/pdf-lib.min.js';
+            s.onload = () => resolve(window.PDFLib);
+            s.onerror = () => {
+                const s2 = document.createElement('script');
+                s2.src = 'https://unpkg.com/pdf-lib@1.17.1/dist/pdf-lib.min.js';
+                s2.onload = () => resolve(window.PDFLib);
+                s2.onerror = (err) => reject(new Error('Konnte pdf-lib nicht laden: ' + err));
+                document.head.appendChild(s2);
+            };
+            document.head.appendChild(s);
+        });
+        return window._pdfLibPromise;
+    }
+
+    /**
+     * Schneidet den DPD-Paketschein aus dem Klick-n-Schick JasperReports-A4-Bogen aus.
+     * Entfernt die Kundenquittung auf der rechten Seite und zentriert das Etikett
+     * auf DIN A4 (fuer normales Druckerpapier - Keynote-Workflow)
+     * oder liefert ein reines DIN A6 Etikett (fuer Thermodrucker).
+     */
+    async function processLabelPdf(pdfBytesOrBuffer, mode = 'a4_centered') {
+        const pdfLib = await ensurePdfLib();
+        const srcDoc = await pdfLib.PDFDocument.load(pdfBytesOrBuffer);
+        const outDoc = await pdfLib.PDFDocument.create();
+        const pages = srcDoc.getPages();
+
+        for (let i = 0; i < pages.length; i++) {
+            const srcPage = pages[i];
+            const { width: srcW, height: srcH } = srcPage.getSize();
+
+            // JasperReports LabelBogenA4_A6New Layout:
+            // Linker Quadrant = DPD Paketschein
+            // Rechter Quadrant = Quittung fuer Kunden
+            // In PDF-Koordinaten (Ursprung unten links):
+            // Left: 0, Bottom: Math.floor(srcH / 2), Right: Math.ceil(srcW / 2), Top: srcH
+            const boundingBox = {
+                left: 0,
+                bottom: Math.floor(srcH / 2),
+                right: Math.ceil(srcW / 2),
+                top: srcH
+            };
+
+            const embeddedPage = await outDoc.embedPage(srcPage, boundingBox);
+
+            if (mode === 'a6_label') {
+                const a6Page = outDoc.addPage([embeddedPage.width, embeddedPage.height]);
+                a6Page.drawPage(embeddedPage, { x: 0, y: 0 });
+            } else {
+                // A4 zentriert (Standard: ersetzt den manuellen Keynote-Schritt komplett!)
+                const a4Page = outDoc.addPage([srcW, srcH]);
+                const centerX = (srcW - embeddedPage.width) / 2;
+                const centerY = (srcH - embeddedPage.height) / 2;
+                a4Page.drawPage(embeddedPage, {
+                    x: centerX,
+                    y: centerY,
+                    width: embeddedPage.width,
+                    height: embeddedPage.height
+                });
+            }
+        }
+
+        return await outDoc.save();
+    }
+
+    async function fetchPdfBuffer(url) {
+        if (typeof GM_xmlhttpRequest === 'function') {
+            return new Promise((resolve, reject) => {
+                GM_xmlhttpRequest({
+                    method: 'GET',
+                    url: url,
+                    responseType: 'arraybuffer',
+                    onload: (res) => {
+                        if (res.status >= 200 && res.status < 300) {
+                            resolve(res.response);
+                        } else {
+                            reject(new Error(`HTTP ${res.status} beim Laden des PDFs`));
+                        }
+                    },
+                    onerror: (err) => reject(new Error('Netzwerkfehler beim PDF-Download: ' + err))
+                });
+            });
+        }
+        const res = await fetch(url, { credentials: 'same-origin' });
+        if (!res.ok) throw new Error(`HTTP ${res.status} beim Laden des PDFs`);
+        return await res.arrayBuffer();
+    }
+
+    function printPdfBlob(pdfBlob) {
+        const blobUrl = URL.createObjectURL(pdfBlob);
+        const iframe = document.createElement('iframe');
+        iframe.style.position = 'fixed';
+        iframe.style.right = '0';
+        iframe.style.bottom = '0';
+        iframe.style.width = '0';
+        iframe.style.height = '0';
+        iframe.style.border = '0';
+        iframe.style.zIndex = '-9999';
+        iframe.src = blobUrl;
+        document.body.appendChild(iframe);
+
+        let printed = false;
+        const trigger = () => {
+            if (printed) return;
+            printed = true;
+            try {
+                iframe.contentWindow.focus();
+                iframe.contentWindow.print();
+            } catch (e) {
+                console.warn('[KnS] Iframe print fallback:', e);
+                window.open(blobUrl, '_blank');
+            }
+            setTimeout(() => {
+                iframe.remove();
+                URL.revokeObjectURL(blobUrl);
+            }, 60000);
+        };
+
+        iframe.onload = () => setTimeout(trigger, 300);
+        setTimeout(trigger, 1800);
+    }
+
+    function downloadPdfBlob(blob, filename) {
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = filename;
+        document.body.appendChild(a);
+        a.click();
+        setTimeout(() => {
+            a.remove();
+            URL.revokeObjectURL(url);
+        }, 15000);
+    }
+
+    async function printLabelDirect(pdfUrl, dataid, mode = 'a4_centered') {
+        showToast('🖨️ Paketschein wird vorbereitet (Zentriert)...', 'info', 2500);
+        try {
+            const rawBytes = await fetchPdfBuffer(pdfUrl);
+            const processedBytes = await processLabelPdf(rawBytes, mode);
+            const blob = new Blob([processedBytes], { type: 'application/pdf' });
+            printPdfBlob(blob);
+            showToast('✓ Druckdialog gestartet!', 'success', 2500);
+        } catch (err) {
+            console.error('[KnS] Print error:', err);
+            showToast('Druckfehler: ' + err.message, 'warn', 5000);
+        }
+    }
+
+    async function downloadLabelProcessed(pdfUrl, dataid, mode = 'a4_centered') {
+        const suffix = mode === 'a6_label' ? 'A6' : 'zentriert';
+        showToast(`⬇ Paketschein wird vorbereitet (${suffix})...`, 'info', 2500);
+        try {
+            const rawBytes = await fetchPdfBuffer(pdfUrl);
+            const processedBytes = await processLabelPdf(rawBytes, mode);
+            const blob = new Blob([processedBytes], { type: 'application/pdf' });
+            downloadPdfBlob(blob, `Paketschein_${dataid}_${suffix}.pdf`);
+            showToast('✓ Download gestartet!', 'success', 2000);
+        } catch (err) {
+            console.error('[KnS] Download error:', err);
+            showToast('Downloadfehler: ' + err.message, 'warn', 5000);
+        }
+    }
+
+    function setupShowfileToolbar() {
+        if (document.getElementById('kns-pdf-topbar')) return;
+        const dataIframe = document.querySelector('iframe[src*="showdata.aspx"]');
+        if (!dataIframe || !dataIframe.src) return;
+
+        const url = dataIframe.src;
+        const match = url.match(/dataid=(\d+)/i);
+        const dataid = match ? match[1] : 'pdf';
+
+        const toolbar = document.createElement('div');
+        toolbar.id = 'kns-pdf-topbar';
+        toolbar.style.cssText = `
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            z-index: 999999;
+            background: linear-gradient(135deg, #1e3a8a, #2563eb);
+            color: #ffffff;
+            padding: 8px 16px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.25);
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+            font-size: 13px;
+        `;
+
+        toolbar.innerHTML = `
+            <div style="display:flex;align-items:center;gap:10px;">
+                <span style="font-weight:700;display:flex;align-items:center;gap:6px;">
+                    ⚡ Paketschein Power-Tools
+                </span>
+                <span style="background:rgba(255,255,255,0.2);padding:2px 8px;border-radius:12px;font-size:11px;">
+                    #${dataid}
+                </span>
+            </div>
+            <div style="display:flex;align-items:center;gap:8px;">
+                <button id="kns-toolbar-print" style="
+                    background: #10b981;
+                    color: #fff;
+                    border: none;
+                    padding: 6px 12px;
+                    border-radius: 4px;
+                    font-size: 12px;
+                    font-weight: bold;
+                    cursor: pointer;
+                    display: flex;
+                    align-items: center;
+                    gap: 5px;
+                    box-shadow: 0 2px 4px rgba(0,0,0,0.2);
+                ">🖨️ Drucken (Zentriert)</button>
+                <button id="kns-toolbar-a4" style="
+                    background: #ffffff;
+                    color: #1e3a8a;
+                    border: none;
+                    padding: 6px 12px;
+                    border-radius: 4px;
+                    font-size: 12px;
+                    font-weight: 600;
+                    cursor: pointer;
+                ">⬇ A4 Zentriert</button>
+                <button id="kns-toolbar-a6" style="
+                    background: rgba(255,255,255,0.15);
+                    color: #fff;
+                    border: 1px solid rgba(255,255,255,0.3);
+                    padding: 6px 10px;
+                    border-radius: 4px;
+                    font-size: 12px;
+                    cursor: pointer;
+                ">🏷️ A6 Label</button>
+                <a id="kns-toolbar-orig" href="${url}" target="_blank" download="Paketschein_${dataid}_original.pdf" style="
+                    color: #cbd5e1;
+                    font-size: 11px;
+                    text-decoration: underline;
+                    padding-left: 6px;
+                ">Original</a>
+            </div>
+        `;
+
+        document.body.prepend(toolbar);
+        document.body.style.paddingTop = '46px';
+
+        toolbar.querySelector('#kns-toolbar-print').addEventListener('click', (e) => {
+            e.preventDefault();
+            printLabelDirect(url, dataid, 'a4_centered');
+        });
+
+        toolbar.querySelector('#kns-toolbar-a4').addEventListener('click', (e) => {
+            e.preventDefault();
+            downloadLabelProcessed(url, dataid, 'a4_centered');
+        });
+
+        toolbar.querySelector('#kns-toolbar-a6').addEventListener('click', (e) => {
+            e.preventDefault();
+            downloadLabelProcessed(url, dataid, 'a6_label');
+        });
+
+        if (config.autoPrintPdf && !sessionStorage.getItem(`kns_autoprinted_${dataid}`)) {
+            sessionStorage.setItem(`kns_autoprinted_${dataid}`, 'true');
+            setTimeout(() => {
+                printLabelDirect(url, dataid, config.printFormat);
+            }, 600);
+        }
+    }
+
+    // --- 11. FEATURE: Paketschein-PDF Auto-Download & Toolbar ---
     function setupAutoPdfDownload() {
+        if (currentPath.includes('showfile.aspx') || isIframe) {
+            setupShowfileToolbar();
+        }
+
         if (!config.autoDownloadPdf) return;
 
         if (currentPath.includes('showfile.aspx') || isIframe) {
@@ -650,17 +940,20 @@
             if (dataIframe && dataIframe.src) {
                 const url = dataIframe.src;
                 const match = url.match(/dataid=(\d+)/i);
-                const dataid = match ? match[1] : url;
+                const dataid = match ? match[1] : 'pdf';
                 if (!sessionStorage.getItem(`kns_autodownloaded_pdf_${dataid}`)) {
                     sessionStorage.setItem(`kns_autodownloaded_pdf_${dataid}`, 'true');
-                    showToast('Paketschein-PDF wird automatisch heruntergeladen...', 'success');
-                    const a = document.createElement('a');
-                    a.href = url;
-                    a.download = `Paketschein_${dataid}.pdf`;
-                    a.target = '_blank';
-                    document.body.appendChild(a);
-                    a.click();
-                    a.remove();
+                    if (config.autoCropPdf) {
+                        downloadLabelProcessed(url, dataid, config.printFormat);
+                    } else {
+                        const a = document.createElement('a');
+                        a.href = url;
+                        a.download = `Paketschein_${dataid}.pdf`;
+                        a.target = '_blank';
+                        document.body.appendChild(a);
+                        a.click();
+                        a.remove();
+                    }
                 }
             }
             return;
@@ -678,8 +971,15 @@
                 const dataid = link.getAttribute('dataid') || link.href;
                 if (dataid && !sessionStorage.getItem(`kns_autodownloaded_pdf_${dataid}`)) {
                     sessionStorage.setItem(`kns_autodownloaded_pdf_${dataid}`, 'true');
-                    showToast('Neuer Paketschein erstellt: PDF-Download startet...', 'success');
-                    link.click();
+                    if (config.autoCropPdf) {
+                        const targetUrl = link.href && link.href.includes('showdata.aspx')
+                            ? link.href
+                            : `../popups/showdata.aspx?type=pakete&dataid=${dataid}`;
+                        downloadLabelProcessed(targetUrl, dataid, config.printFormat);
+                    } else {
+                        showToast('Neuer Paketschein erstellt: PDF-Download startet...', 'success');
+                        link.click();
+                    }
                 }
             });
         }
@@ -786,35 +1086,100 @@
             span.after(container);
         });
 
-        // C) Direkter PDF-Download-Button in meinepaketscheine
+        // C) Direkter PDF-Download- & Druck-Buttons in meinepaketscheine
         const openPdfLinks = document.querySelectorAll('a.openpdf[dataid]');
         openPdfLinks.forEach((link) => {
-            if (link.dataset.knsDirectPdfAdded === 'true') return;
-            link.dataset.knsDirectPdfAdded = 'true';
+            if (link.dataset.knsPdfToolsAdded === 'true') return;
+            link.dataset.knsPdfToolsAdded = 'true';
 
             const dataid = link.getAttribute('dataid');
             if (!dataid) return;
 
-            const directDownload = document.createElement('a');
-            directDownload.href = `../popups/showdata.aspx?type=pakete&dataid=${dataid}`;
-            directDownload.target = '_blank';
-            directDownload.download = `Paketschein_${dataid}.pdf`;
-            directDownload.innerHTML = '⬇ PDF';
-            directDownload.title = 'Paketschein direkt herunterladen';
-            directDownload.style.cssText = `
-                display: inline-block;
-                margin-left: 8px;
-                padding: 2px 6px;
-                background: #1e40af;
-                color: #ffffff !important;
+            const pdfUrl = `../popups/showdata.aspx?type=pakete&dataid=${dataid}`;
+            const container = document.createElement('span');
+            container.className = 'kns-pdf-actions';
+            container.style.cssText = 'display: inline-flex; align-items: center; gap: 4px; margin-left: 8px; vertical-align: middle;';
+
+            // 1. Drucken (Zentriert A4)
+            const printBtn = document.createElement('button');
+            printBtn.type = 'button';
+            printBtn.innerHTML = '🖨️ Drucken';
+            printBtn.title = 'Paketschein zuschneiden (ohne Quittung), zentrieren & sofort drucken';
+            printBtn.style.cssText = `
+                background: #059669;
+                color: #ffffff;
+                border: none;
                 border-radius: 4px;
+                padding: 2px 7px;
+                font-size: 11px;
+                font-weight: 700;
+                cursor: pointer;
+                transition: background 0.15s;
+            `;
+            printBtn.addEventListener('click', (e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                printLabelDirect(pdfUrl, dataid, 'a4_centered');
+            });
+
+            // 2. A4 Zentriert Download
+            const dlA4Btn = document.createElement('button');
+            dlA4Btn.type = 'button';
+            dlA4Btn.innerHTML = '⬇ A4';
+            dlA4Btn.title = 'Paketschein zuschneiden & als zentriertes DIN A4 PDF herunterladen (Keynote-Workflow)';
+            dlA4Btn.style.cssText = `
+                background: #2563eb;
+                color: #ffffff;
+                border: none;
+                border-radius: 4px;
+                padding: 2px 6px;
                 font-size: 11px;
                 font-weight: 600;
-                text-decoration: none !important;
-                vertical-align: middle;
+                cursor: pointer;
+            `;
+            dlA4Btn.addEventListener('click', (e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                downloadLabelProcessed(pdfUrl, dataid, 'a4_centered');
+            });
+
+            // 3. A6 Label Download
+            const dlA6Btn = document.createElement('button');
+            dlA6Btn.type = 'button';
+            dlA6Btn.innerHTML = '🏷️ A6';
+            dlA6Btn.title = 'Als reines DIN A6 Etikett für Thermodrucker herunterladen';
+            dlA6Btn.style.cssText = `
+                background: #475569;
+                color: #ffffff;
+                border: none;
+                border-radius: 4px;
+                padding: 2px 5px;
+                font-size: 11px;
+                font-weight: 600;
+                cursor: pointer;
+            `;
+            dlA6Btn.addEventListener('click', (e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                downloadLabelProcessed(pdfUrl, dataid, 'a6_label');
+            });
+
+            // 4. Original-Download
+            const dlOrigLink = document.createElement('a');
+            dlOrigLink.href = pdfUrl;
+            dlOrigLink.download = `Paketschein_${dataid}_original.pdf`;
+            dlOrigLink.target = '_blank';
+            dlOrigLink.innerHTML = 'Orig.';
+            dlOrigLink.title = 'Original unbeschnittenes PDF mit Kundenquittung herunterladen';
+            dlOrigLink.style.cssText = `
+                color: #64748b;
+                font-size: 10px;
+                text-decoration: underline;
+                margin-left: 2px;
             `;
 
-            link.after(directDownload);
+            container.append(printBtn, dlA4Btn, dlA6Btn, dlOrigLink);
+            link.after(container);
         });
     }
 
@@ -1004,6 +1369,21 @@
                         <span><strong>Paketschein-PDF</strong> automatisch herunterladen</span>
                     </label>
                     <label style="display:flex;align-items:center;gap:8px;cursor:pointer;">
+                        <input type="checkbox" id="cfg_autoCropPdf" ${config.autoCropPdf ? 'checked' : ''}>
+                        <span><strong>PDF zuschneiden & zentrieren</strong> (Keynote-Workflow)</span>
+                    </label>
+                    <label style="display:flex;align-items:center;gap:8px;cursor:pointer;">
+                        <input type="checkbox" id="cfg_autoPrintPdf" ${config.autoPrintPdf ? 'checked' : ''}>
+                        <span><strong>Sofort-Druckdialog</strong> beim Öffnen starten</span>
+                    </label>
+                    <div style="display:flex;align-items:center;justify-content:space-between;padding-left:22px;font-size:12px;color:#4b5563;">
+                        <span>Standard-Format:</span>
+                        <select id="cfg_printFormat" style="padding:2px 6px;border-radius:4px;border:1px solid #cbd5e1;font-size:11px;">
+                            <option value="a4_centered" ${config.printFormat === 'a4_centered' ? 'selected' : ''}>A4 zentriert (Standard)</option>
+                            <option value="a6_label" ${config.printFormat === 'a6_label' ? 'selected' : ''}>A6 (Thermolabel)</option>
+                        </select>
+                    </div>
+                    <label style="display:flex;align-items:center;gap:8px;cursor:pointer;">
                         <input type="checkbox" id="cfg_enablePresets" ${config.enablePresets ? 'checked' : ''}>
                         <span><strong>LEGO-Presets</strong> im Popup anzeigen</span>
                     </label>
@@ -1033,7 +1413,7 @@
                     <button id="kns-clear-creds" style="background:#fee2e2;border:1px solid #f87171;color:#b91c1c;padding:4px 8px;border-radius:4px;cursor:pointer;font-size:11px;">
                         Gespeicherte Logins löschen
                     </button>
-                    <span style="font-size:11px;color:#9ca3af;">v1.2.0</span>
+                    <span style="font-size:11px;color:#9ca3af;">v1.3.0</span>
                 </div>
             `;
 
@@ -1045,6 +1425,8 @@
                 'cfg_defaultSperrgutNo',
                 'cfg_alwaysDpd',
                 'cfg_autoDownloadPdf',
+                'cfg_autoCropPdf',
+                'cfg_autoPrintPdf',
                 'cfg_enablePresets',
                 'cfg_enableCopyTools',
                 'cfg_saveLogin',
@@ -1061,6 +1443,15 @@
                     });
                 }
             });
+
+            const selectFormat = modal.querySelector('#cfg_printFormat');
+            if (selectFormat) {
+                selectFormat.addEventListener('change', () => {
+                    config.printFormat = selectFormat.value;
+                    storage.set('cfg_printFormat', selectFormat.value);
+                    showToast('Druckformat gespeichert', 'info', 1500);
+                });
+            }
 
             modal.querySelector('#kns-clear-creds').addEventListener('click', () => {
                 if (confirm('Gespeicherte Login-Daten wirklich löschen?')) {
