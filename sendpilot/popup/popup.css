@@ -348,3 +348,69 @@ main {
     color: var(--muted);
     font-size: 10px;
 }
+
+/* eBay-Verkäufe */
+.ebay-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    background: #f8fafc;
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    padding: 7px 9px;
+}
+
+.ebay-info {
+    display: flex;
+    flex-direction: column;
+    line-height: 1.25;
+    min-width: 0;
+}
+
+.ebay-info strong {
+    font-size: 12px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.ebay-info small {
+    font-size: 10px;
+    color: var(--muted);
+}
+
+.ebay-actions {
+    display: flex;
+    gap: 4px;
+    flex-shrink: 0;
+}
+
+.mini {
+    background: var(--primary);
+    color: #fff;
+    border: 0;
+    border-radius: 6px;
+    padding: 4px 8px;
+    font-size: 10px;
+    font-weight: 700;
+    cursor: pointer;
+    white-space: nowrap;
+}
+
+.mini:hover {
+    filter: brightness(1.1);
+}
+
+.ghost-mini {
+    background: #fff;
+    color: var(--primary);
+    border: 1px solid #c7d2fe;
+}
+
+.hint {
+    color: var(--muted);
+    font-size: 10px;
+    margin: 6px 0 0;
+    line-height: 1.35;
+}

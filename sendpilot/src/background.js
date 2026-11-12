@@ -22,6 +22,7 @@ const COURIERS = [
 ];
 
 const HISTORY_KEY = 'sendpilot.history';
+const EBAY_KEY = 'sendpilot.ebay';
 
 // --- Paket-Mathematik (Spiegel von popup/lib.js) ---
 
@@ -117,6 +118,21 @@ async function pushHistory(entry) {
     await chrome.storage.local.set({ [HISTORY_KEY]: filtered.slice(0, HISTORY_LIMIT) });
 }
 
+const EBAY_LIMIT = 20;
+
+/**
+ * Legt einen von der eBay-Seite erfassten Verkauf ab (dedupliziert über orderId).
+ */
+async function pushEbayOrder(order) {
+    if (!order || (!order.buyer && !order.orderId)) return;
+    const result = await chrome.storage.local.get(EBAY_KEY);
+    const list = Array.isArray(result[EBAY_KEY]) ? result[EBAY_KEY] : [];
+    const key = order.orderId || [order.buyer, order.zip].join('|');
+    const filtered = list.filter((item) => (item.orderId || [item.buyer, item.zip].join('|')) !== key);
+    filtered.unshift({ ...order, ts: Date.now() });
+    await chrome.storage.local.set({ [EBAY_KEY]: filtered.slice(0, EBAY_LIMIT) });
+}
+
 // --- Aktionen ---
 
 chrome.action.onClicked.addListener(async () => {
@@ -133,6 +149,13 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
 
     if (message.type === 'SENDPILOT_PACKAGE') {
         pushHistory({ pkg: message.package, provider: message.provider, country: message.country })
+            .then(() => sendResponse({ ok: true }))
+            .catch((error) => sendResponse({ ok: false, error: String(error) }));
+        return true;
+    }
+
+    if (message.type === 'SENDPILOT_EBAY_ORDER') {
+        pushEbayOrder(message.order)
             .then(() => sendResponse({ ok: true }))
             .catch((error) => sendResponse({ ok: false, error: String(error) }));
         return true;

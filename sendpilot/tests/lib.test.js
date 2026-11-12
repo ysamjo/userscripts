@@ -94,4 +94,44 @@ check('Formatierung nutzt deutsches Dezimalkomma', () => {
     assert.strictEqual(lib.formatKg(0), '–');
 });
 
+// --- eBay-Übergabe ---
+
+check('Adressblock: Name, Straße, PLZ Ort, Land', () => {
+    const block = lib.ebayAddressBlock({ buyer: 'Max Muster', street: 'Hauptstr. 1', zip: '12345', city: 'Berlin', country: 'DE' });
+    assert.strictEqual(block, 'Max Muster\nHauptstr. 1\n12345 Berlin\nDeutschland');
+});
+
+check('Adressblock: Ausland bleibt Ausland', () => {
+    const block = lib.ebayAddressBlock({ buyer: 'A', street: 'B', zip: '1010', city: 'Wien', country: 'AT' });
+    assert.strictEqual(block.split('\n').pop(), 'AT');
+});
+
+check('Adressblock: leere Eingabe bleibt leer', () => {
+    assert.strictEqual(lib.ebayAddressBlock(null), '');
+    assert.strictEqual(lib.ebayAddressBlock({}), '');
+});
+
+check('Hermes-CSV-Zeile hat 6 Semikolon-Felder', () => {
+    const row = lib.ebayCsvRow({ buyer: 'Max', street: 'Hauptstr. 1', zip: '12345', city: 'Berlin', country: 'DE', weight: 5 });
+    assert.strictEqual(row.split(';').length, 6);
+    assert.ok(row.startsWith('Max;Hauptstr. 1;12345;Berlin;DE;5'));
+    assert.strictEqual(lib.EBAY_CSV_HEADER.split(';').length, 6);
+});
+
+check('CSV maskiert Semikolon im Namen', () => {
+    const row = lib.ebayCsvRow({ buyer: 'Muster; GmbH', street: 'Weg 2', zip: '1', city: 'X' });
+    assert.strictEqual(row.split(';').length, 6);
+});
+
+check('eBay-Import-Support verweist auf echte Konto-Seiten', () => {
+    assert.ok(lib.EBAY_IMPORT_SUPPORT.kns.url.includes('/portal/ebayimport'));
+    assert.ok(lib.EBAY_IMPORT_SUPPORT.hermes.url.includes('/meinkonto/ebayimport'));
+});
+
+check('orderToPackage nutzt Fallback-Maße', () => {
+    const pkg = lib.orderToPackage({ weight: 2.5 }, { laenge: 60, breite: 40, hoehe: 30, gewicht: 5 });
+    assert.strictEqual(pkg.gewicht, 2.5);
+    assert.strictEqual(pkg.laenge, 60);
+});
+
 console.log(`\n${passed} Tests bestanden.`);

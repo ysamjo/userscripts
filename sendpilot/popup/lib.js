@@ -90,6 +90,83 @@
         return builder(pkg || {}, country);
     }
 
+    // --- eBay-Übergabe (kein API-Key nötig) --------------------------------
+    //
+    // Klick-n-Schick und Hermes haben einen eigenen eBay-Import im Konto.
+    // DHL/Novapost bieten das für Privatkunden nicht an. SendPilot erfasst
+    // die Verkaufsdaten deshalb einmal auf der eBay-Seite und legt sie in
+    // genau dem Format ab, das die Portale bzw. die Zwischenablage brauchen.
+
+    const EBAY_ORDER_FIELDS = ['buyer', 'street', 'city', 'zip', 'country', 'item', 'orderId'];
+
+    /**
+     * Baut aus einem erfassten eBay-Verkauf eine mehrzeilige Adresse,
+     * wie sie Klick-n-Schick und Hermes im Import-Formular erwarten.
+     */
+    function ebayAddressBlock(order) {
+        if (!order) return '';
+        // Ohne Käufer und Straße gibt es keine sinnvolle Adresse
+        if (!order.buyer && !order.street) return '';
+        const lines = [];
+        if (order.buyer) lines.push(String(order.buyer).trim());
+        if (order.street) lines.push(String(order.street).trim());
+        const cityLine = [order.zip, order.city].filter(Boolean).join(' ').trim();
+        if (cityLine) lines.push(cityLine);
+        const country = order.country && !/^(de|deutschland|germany)$/i.test(order.country)
+            ? order.country
+            : 'Deutschland';
+        lines.push(country);
+        return lines.filter(Boolean).join('\n');
+    }
+
+    /**
+     * Hermes-CSV-Zeile (Semikolon, Spalten wie im csvimport-Formular).
+     * Kopfzeile: Name;Strasse;PLZ;Ort;Land;Gewicht
+     */
+    function ebayCsvRow(order) {
+        const country = order?.country || 'DE';
+        const cells = [
+            order?.buyer || '',
+            order?.street || '',
+            order?.zip || '',
+            order?.city || '',
+            country,
+            order?.weight || ''
+        ];
+        return cells.map((cell) => String(cell).replace(/;/g, ',').trim()).join(';');
+    }
+
+    const EBAY_CSV_HEADER = 'Name;Strasse;PLZ;Ort;Land;Gewicht';
+
+    /**
+     * Welche Portale haben einen eigenen eBay-Import im Konto?
+     */
+    const EBAY_IMPORT_SUPPORT = {
+        kns: {
+            url: 'https://www.klick-n-schick.com/portal/ebayimport',
+            mode: 'auto',
+            note: 'Import stößt automatisch an, Maße werden je Zeile gesetzt'
+        },
+        hermes: {
+            url: 'https://www.myhermes.de/meinkonto/ebayimport',
+            mode: 'manual',
+            note: 'eBay-Adressimport im Hermes-Konto (Login nötig)'
+        }
+    };
+
+    /**
+     * Verdichtet einen erfassten Verkauf zu einem Paketdatensatz.
+     */
+    function orderToPackage(order, fallback) {
+        const pkg = {
+            laenge: Number(order?.laenge) || Number(fallback?.laenge),
+            breite: Number(order?.breite) || Number(fallback?.breite),
+            hoehe: Number(order?.hoehe) || Number(fallback?.hoehe),
+            gewicht: Number(order?.weight) || Number(order?.gewicht) || Number(fallback?.gewicht)
+        };
+        return pkg;
+    }
+
     const LETTER_TIERS = [
         { name: 'Standardbrief', maxL: 23.5, maxB: 12.5, maxH: 0.5, maxW: 20, price: 0.95 },
         { name: 'Kompaktbrief', maxL: 23.5, maxB: 12.5, maxH: 1, maxW: 50, price: 1.10 },
@@ -118,6 +195,12 @@
         DIVISORS,
         LETTER_TIERS,
         QUICK_URLS,
+        EBAY_ORDER_FIELDS,
+        EBAY_CSV_HEADER,
+        EBAY_IMPORT_SUPPORT,
+        ebayAddressBlock,
+        ebayCsvRow,
+        orderToPackage,
         sortedDims,
         girthCm,
         volumetricWeightKg,

@@ -22,6 +22,8 @@ INCLUDE = [
     "src/background.js",
     "src/paketda.js",
     "src/klick-n-schick.js",
+    "src/dhl-autofill.js",
+    "src/ebay.js",
     "popup/popup.html",
     "popup/popup.css",
     "popup/popup.js",

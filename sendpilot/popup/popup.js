@@ -15,7 +15,10 @@ const {
     urlParams,
     buildUrl,
     letterTier,
-    formatKg
+    formatKg,
+    ebayAddressBlock,
+    ebayCsvRow,
+    orderToPackage
 } = window.sendPilotLib;
 
 // --- Paketdienste (Anzeige) -------------------------------------------------
@@ -38,6 +41,7 @@ const FIELDS = ['laenge', 'breite', 'hoehe', 'gewicht'];
 const STORAGE_DRAFT = 'sendpilot.draft';
 const STORAGE_SETTINGS = 'sendpilot.settings';
 const HISTORY_KEY = 'sendpilot.history';
+const EBAY_KEY = 'sendpilot.ebay';
 
 let settings = { quickProvider: 'paketda', clickOpensPaketda: false, country: 'DE', divisor: 5000 };
 let currentPkg = null;
@@ -136,6 +140,73 @@ function renderCouriers(pkg) {
     });
 }
 
+function renderEbayOrders(orders) {
+    const list = $('#ebay-orders');
+    if (!list) return;
+    list.innerHTML = '';
+
+    if (!orders.length) {
+        const empty = document.createElement('div');
+        empty.className = 'empty';
+        empty.textContent = 'Noch kein Verkauf erfasst.';
+        list.appendChild(empty);
+        return;
+    }
+
+    orders.slice(0, 5).forEach((order) => {
+        const row = document.createElement('div');
+        row.className = 'ebay-row';
+
+        const info = document.createElement('div');
+        info.className = 'ebay-info';
+        const buyer = document.createElement('strong');
+        buyer.textContent = order.buyer || 'Unbekannter Käufer';
+        const meta = document.createElement('small');
+        meta.textContent = [order.zip, order.city].filter(Boolean).join(' ') || (order.item || '').slice(0, 28);
+        info.append(buyer, meta);
+
+        const actions = document.createElement('div');
+        actions.className = 'ebay-actions';
+
+        const useBtn = document.createElement('button');
+        useBtn.type = 'button';
+        useBtn.className = 'mini';
+        useBtn.textContent = 'Maße übernehmen';
+        useBtn.title = 'Käuferadresse kopieren und Paket als Entwurf laden';
+        useBtn.addEventListener('click', async () => {
+            const pkg = orderToPackage(order, readForm());
+            writeForm(pkg);
+            update();
+            saveDraft();
+            try {
+                await navigator.clipboard.writeText(ebayAddressBlock(order));
+                useBtn.textContent = '✓ Adresse kopiert';
+            } catch (e) {
+                useBtn.textContent = '✓ geladen';
+            }
+            setTimeout(() => { useBtn.textContent = 'Maße übernehmen'; }, 1500);
+        });
+
+        const csvBtn = document.createElement('button');
+        csvBtn.type = 'button';
+        csvBtn.className = 'mini ghost-mini';
+        csvBtn.textContent = 'CSV';
+        csvBtn.title = 'Hermes-kompatible CSV-Zeile kopieren';
+        csvBtn.addEventListener('click', async () => {
+            const header = window.sendPilotLib.EBAY_CSV_HEADER;
+            try {
+                await navigator.clipboard.writeText(`${header}\n${ebayCsvRow(order)}`);
+                csvBtn.textContent = '✓';
+                setTimeout(() => { csvBtn.textContent = 'CSV'; }, 1200);
+            } catch (e) {}
+        });
+
+        actions.append(useBtn, csvBtn);
+        row.append(info, actions);
+        list.appendChild(row);
+    });
+}
+
 function renderHistory(history) {
     const list = $('#history');
     list.innerHTML = '';
@@ -195,12 +266,13 @@ async function saveDraft() {
 async function loadState() {
     const [syncData, localData] = await Promise.all([
         chrome.storage.sync.get(STORAGE_SETTINGS),
-        chrome.storage.local.get([STORAGE_DRAFT, HISTORY_KEY])
+        chrome.storage.local.get([STORAGE_DRAFT, HISTORY_KEY, EBAY_KEY])
     ]);
     settings = Object.assign(settings, syncData[STORAGE_SETTINGS] || {});
     const draft = localData[STORAGE_DRAFT];
     if (draft?.pkg) writeForm(draft.pkg);
     renderHistory(Array.isArray(localData[HISTORY_KEY]) ? localData[HISTORY_KEY] : []);
+    renderEbayOrders(Array.isArray(localData[EBAY_KEY]) ? localData[EBAY_KEY] : []);
 }
 
 // --- Init (nur im Popup) ----------------------------------------------------
@@ -263,8 +335,13 @@ if (typeof document !== 'undefined') {
 
         // Sync: Änderungen aus anderen Tabs / Content-Scripts
         chrome.storage.onChanged.addListener((changes, area) => {
-            if (area !== 'local' || !changes[HISTORY_KEY]) return;
-            renderHistory(Array.isArray(changes[HISTORY_KEY].newValue) ? changes[HISTORY_KEY].newValue : []);
+            if (area !== 'local') return;
+            if (changes[HISTORY_KEY]) {
+                renderHistory(Array.isArray(changes[HISTORY_KEY].newValue) ? changes[HISTORY_KEY].newValue : []);
+            }
+            if (changes[EBAY_KEY]) {
+                renderEbayOrders(Array.isArray(changes[EBAY_KEY].newValue) ? changes[EBAY_KEY].newValue : []);
+            }
         });
     }
 

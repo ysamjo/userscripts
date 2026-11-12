@@ -22,20 +22,32 @@
       "128": "icons/icon128.png"
     }
   },
+  "background": {
+    "service_worker": "src/background.js"
+  },
   "options_ui": {
     "page": "popup/options.html",
     "open_in_tab": true
   },
-  "permissions": ["storage", "activeTab"],
+  "permissions": [
+    "storage",
+    "activeTab"
+  ],
   "host_permissions": [
     "https://www.paketda.de/*",
     "https://www.klick-n-schick.com/*",
-    "https://klick-n-schick.com/*"
+    "https://klick-n-schick.com/*",
+    "https://www.dhl.de/*",
+    "https://www.ebay.de/*"
   ],
   "content_scripts": [
     {
-      "matches": ["https://www.paketda.de/paket-preis-rechner.php*"],
-      "js": ["src/paketda.js"],
+      "matches": [
+        "https://www.paketda.de/paket-preis-rechner.php*"
+      ],
+      "js": [
+        "src/paketda.js"
+      ],
       "run_at": "document_idle"
     },
     {
@@ -43,7 +55,28 @@
         "https://www.klick-n-schick.com/portal/*",
         "https://klick-n-schick.com/portal/*"
       ],
-      "js": ["src/klick-n-schick.js"],
+      "js": [
+        "src/klick-n-schick.js"
+      ],
+      "run_at": "document_idle"
+    },
+    {
+      "matches": [
+        "https://www.dhl.de/de/privatkunden/pakete-versenden/*"
+      ],
+      "js": [
+        "src/dhl-autofill.js"
+      ],
+      "run_at": "document_idle"
+    },
+    {
+      "matches": [
+        "https://www.ebay.de/mesh/seller/*",
+        "https://www.ebay.de/itm/*"
+      ],
+      "js": [
+        "src/ebay.js"
+      ],
       "run_at": "document_idle"
     }
   ],
