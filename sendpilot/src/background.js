@@ -120,6 +120,114 @@ async function pushHistory(entry) {
 
 const EBAY_LIMIT = 20;
 
+const EBAY_API = {
+    config: 'sendpilot.ebay.api',
+    tokens: 'sendpilot.ebay.tokens',
+    orders: 'sendpilot.ebay.orders'
+};
+const EBAY_SCOPE = 'https://api.ebay.com/oauth/api_scope/sell.fulfillment.readonly';
+
+function ebayEnv(name) {
+    if (name === 'sandbox') {
+        return { auth: 'https://auth.sandbox.ebay.com', api: 'https://api.sandbox.ebay.com' };
+    }
+    return { auth: 'https://auth.ebay.com', api: 'https://api.ebay.com' };
+}
+
+/** Normalisiert eine eBay-Bestellung auf das SendPilot-Format. */
+function mapEbayOrder(order) {
+    const instruction = (order.fulfillmentStartInstructions || [])[0] || {};
+    const shipTo = (instruction.shippingStep && instruction.shippingStep.shipTo) || {};
+    const address = shipTo.contactAddress || {};
+    const item = (order.lineItems || [])[0] || {};
+    const street = [address.addressLine1, address.addressLine2].filter(Boolean).join(' ');
+    return {
+        orderId: order.orderId || '',
+        buyer: shipTo.fullName || (order.buyer && order.buyer.username) || '',
+        street,
+        zip: address.postalCode || '',
+        city: address.city || '',
+        country: address.countryCode || 'DE',
+        item: item.title || '',
+        quantity: item.quantity || 1,
+        total: order.pricingSummary && order.pricingSummary.total
+            ? `${order.pricingSummary.total.value} ${order.pricingSummary.total.currency || 'EUR'}`
+            : '',
+        createdDate: order.creationDate || '',
+        status: order.orderFulfillmentStatus || '',
+        source: 'api'
+    };
+}
+
+/** Gültiges Access-Token holen, bei Ablauf mit dem Refresh-Token erneuern. */
+async function ebayAccessToken() {
+    const store = await chrome.storage.local.get([EBAY_API.config, EBAY_API.tokens]);
+    const config = store[EBAY_API.config];
+    const tokens = store[EBAY_API.tokens] || {};
+    if (!config || !config.clientId || !config.clientSecret || !config.ruName) {
+        throw new Error('eBay-API ist nicht eingerichtet (Einstellungen → eBay-API).');
+    }
+    if (tokens.accessToken && tokens.expiresAt && Date.now() < tokens.expiresAt) {
+        return { config, accessToken: tokens.accessToken };
+    }
+    if (!tokens.refreshToken) {
+        throw new Error('Keine eBay-Autorisierung – bitte in den Einstellungen verbinden.');
+    }
+    const env = ebayEnv(config.env);
+    const response = await fetch(`${env.api}/identity/v1/oauth2/token`, {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/x-www-form-urlencoded',
+            Authorization: `Basic ${btoa(`${config.clientId}:${config.clientSecret}`)}`
+        },
+        body: new URLSearchParams({
+            grant_type: 'refresh_token',
+            refresh_token: tokens.refreshToken,
+            scope: EBAY_SCOPE
+        }).toString()
+    });
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok) {
+        throw new Error((data.error_description) || `Token-Erneuerung fehlgeschlagen (HTTP ${response.status})`);
+    }
+    const fresh = {
+        accessToken: data.access_token,
+        refreshToken: data.refresh_token || tokens.refreshToken,
+        expiresAt: Date.now() + (Number(data.expires_in) || 7200) * 1000 - 60000
+    };
+    await chrome.storage.local.set({ [EBAY_API.tokens]: fresh });
+    return { config, accessToken: fresh.accessToken };
+}
+
+/** Holt Bestellungen der letzten N Tage (eBay-Limit: 90) und legt sie ab. */
+async function syncEbayOrders(options = {}) {
+    const { config, accessToken } = await ebayAccessToken();
+    const env = ebayEnv(config.env);
+    const days = Math.min(Math.max(Number(options.days) || 30, 1), 90);
+    const limit = Math.min(Math.max(Number(options.limit) || 20, 1), 100);
+    const from = new Date(Date.now() - days * 86400000).toISOString();
+    const params = new URLSearchParams({ limit: String(limit) });
+    if (options.unfulfilledOnly === false) {
+        params.set('filter', `order.creationDate:[${from}..]`);
+    } else {
+        params.set('filter', `order.creationDate:[${from}..],order.orderFulfillmentStatus:{FULFILLED}`);
+    }
+
+    const response = await fetch(`${env.api}/sell/fulfillment/v1/order?${params.toString()}`, {
+        headers: { Authorization: `Bearer ${accessToken}`, Accept: 'application/json' }
+    });
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok) {
+        const err = (data.errors && data.errors[0]) || {};
+        throw new Error(err.longMessage || err.message || `getOrders fehlgeschlagen (HTTP ${response.status})`);
+    }
+    const mapped = (Array.isArray(data.orders) ? data.orders : [])
+        .map(mapEbayOrder)
+        .filter((order) => order.orderId);
+    await chrome.storage.local.set({ [EBAY_API.orders]: mapped.slice(0, EBAY_LIMIT) });
+    return mapped;
+}
+
 /**
  * Legt einen von der eBay-Seite erfassten Verkauf ab (dedupliziert über orderId).
  */
@@ -158,6 +266,13 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
         pushEbayOrder(message.order)
             .then(() => sendResponse({ ok: true }))
             .catch((error) => sendResponse({ ok: false, error: String(error) }));
+        return true;
+    }
+
+    if (message.type === 'SENDPILOT_EBAY_SYNC') {
+        syncEbayOrders(message.options)
+            .then((orders) => sendResponse({ ok: true, count: orders.length }))
+            .catch((error) => sendResponse({ ok: false, error: String(error.message || error) }));
         return true;
     }
 

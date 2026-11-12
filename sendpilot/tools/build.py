@@ -30,6 +30,7 @@ INCLUDE = [
     "popup/options.html",
     "popup/options.css",
     "popup/options.js",
+    "popup/ebay-api.js",
     "popup/lib.js"
 ]
 

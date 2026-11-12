@@ -176,6 +176,134 @@ function bind() {
     });
 }
 
+// --- eBay-API ---------------------------------------------------------
+
+const ebay = window.sendPilotEbay;
+
+function ebayMsg(text, kind = '') {
+    const el = $('#ebay-msg');
+    el.hidden = false;
+    el.textContent = text;
+    el.className = `msg ${kind}`;
+}
+
+function renderEbayOrders(list) {
+    const box = $('#ebay-orders');
+    if (!list || !list.length) {
+        box.innerHTML = '<p class="hint">Noch keine Bestellungen geladen.</p>';
+        return;
+    }
+    const rows = list.map((order) => {
+        const addr = [order.street, `${order.zip} ${order.city}`, order.country]
+            .filter(Boolean)
+            .join(', ');
+        const meta = [order.createdDate ? order.createdDate.slice(0, 10) : '', order.item, order.status]
+            .filter(Boolean)
+            .join(' · ');
+        return `<div class="ebay-order">
+            <div class="row"><strong>${order.buyer || 'Unbekannt'}</strong>
+                <span class="muted">${meta}</span></div>
+            <div class="muted">${addr}</div>
+        </div>`;
+    }).join('');
+    box.innerHTML = rows;
+}
+
+async function renderEbayStatus() {
+    const status = await ebay.status();
+    const el = $('#ebay-status');
+    if (!status.configured) {
+        el.textContent = 'Nicht eingerichtet.';
+    } else {
+        const env = status.env === 'sandbox' ? 'Sandbox' : 'Produktion';
+        const auth = status.connected ? 'verbunden' : 'nicht verbunden';
+        const token = status.accessTokenValid ? 'Token gültig' : 'Token abgelaufen';
+        el.textContent = `${status.clientId} · ${env} · ${auth} · ${token}`;
+    }
+}
+
+async function bindEbay() {
+    $('#ebay-copy-redirect').addEventListener('click', async () => {
+        const url = ebay.redirectUrl();
+        try {
+            await navigator.clipboard.writeText(url);
+            ebayMsg('Redirect-URL kopiert.', 'ok');
+        } catch (e) {
+            ebayMsg('Kopieren fehlgeschlagen – bitte manuell übernehmen.', 'err');
+        }
+    });
+
+    $('#ebay-save').addEventListener('click', async () => {
+        const config = {
+            clientId: $('#ebay-client-id').value.trim(),
+            clientSecret: $('#ebay-client-secret').value.trim(),
+            ruName: $('#ebay-runame').value.trim(),
+            env: $('#ebay-env').value
+        };
+        if (!config.clientId || !config.clientSecret || !config.ruName) {
+            ebayMsg('Alle drei Werte (App-ID, Cert-ID, RuName) sind Pflicht.', 'err');
+            return;
+        }
+        await ebay.saveConfig(config);
+        ebayMsg('Konfiguration gespeichert.', 'ok');
+        await renderEbayStatus();
+    });
+
+    $('#ebay-connect').addEventListener('click', async () => {
+        const config = await ebay.getConfig();
+        if (!config) {
+            ebayMsg('Bitte zuerst speichern (App-ID, Cert-ID, RuName).', 'err');
+            return;
+        }
+        ebayMsg('eBay-Fenster öffnet sich – bitte anmelden und bestätigen …');
+        try {
+            const code = await ebay.authorize(config);
+            ebayMsg('Code erhalten, Token wird ausgetauscht …');
+            const tokens = await ebay.exchangeCode(config, code);
+            await ebay.saveTokens(tokens);
+            ebayMsg('Verbunden! Bestellungen können jetzt geladen werden.', 'ok');
+            await renderEbayStatus();
+        } catch (error) {
+            ebayMsg(`Verbindung fehlgeschlagen: ${error.message}`, 'err');
+        }
+    });
+
+    $('#ebay-sync').addEventListener('click', async () => {
+        const days = Number($('#ebay-days').value) || 30;
+        const unfulfilledOnly = $('#ebay-unfulfilled').value === '1';
+        ebayMsg('Bestellungen werden geladen …');
+        try {
+            const orders = await ebay.syncOrders({ days, limit: 20, unfulfilledOnly });
+            renderEbayOrders(orders);
+            ebayMsg(`${orders.length} Bestellung(en) geladen.`, 'ok');
+        } catch (error) {
+            ebayMsg(`Laden fehlgeschlagen: ${error.message}`, 'err');
+        }
+    });
+
+    $('#ebay-disconnect').addEventListener('click', async () => {
+        await ebay.clearTokens();
+        renderEbayOrders([]);
+        ebayMsg('Verbindung getrennt (Konfiguration bleibt erhalten).', 'ok');
+        await renderEbayStatus();
+    });
+}
+
+async function initEbay() {
+    const card = $('#ebay-card');
+    if (!card) return;
+    $('#ebay-redirect').textContent = ebay.redirectUrl();
+    await bindEbay();
+    const config = await ebay.getConfig();
+    if (config) {
+        $('#ebay-client-id').value = config.clientId;
+        $('#ebay-client-secret').value = config.clientSecret;
+        $('#ebay-runame').value = config.ruName;
+        $('#ebay-env').value = config.env || 'production';
+    }
+    await renderEbayStatus();
+}
+
 async function startOptions() {
     if (!$('#quick-provider')) return;
     $('#version').textContent = `v${chrome.runtime.getManifest().version}`;
@@ -183,6 +311,7 @@ async function startOptions() {
     await loadSettings();
     updateCalc();
     await renderUsage();
+    await initEbay();
 }
 
 if (document.readyState === 'loading') {

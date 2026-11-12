@@ -134,4 +134,56 @@ check('orderToPackage nutzt Fallback-Maße', () => {
     assert.strictEqual(pkg.laenge, 60);
 });
 
-console.log(`\n${passed} Tests bestanden.`);
+process.on('exit', () => console.log(`\n${passed} Tests bestanden.`));
+
+// --- eBay-API-Modul (pure Funktionen, kein chrome/fetch) ---
+const ebayApi = require('../popup/ebay-api.js');
+
+check('EBAY-URL: redirect_uri ist der RuName (nicht die URL)', () => {
+    const url = ebayApi.buildAuthorizeUrl({ clientId: 'CID', ruName: 'App-SendPilot-PRD-abc' }, 'st');
+    assert.ok(url.startsWith('https://auth.ebay.com/oauth2/authorize?'), url);
+    assert.ok(url.includes('redirect_uri=App-SendPilot-PRD-abc'));
+    assert.ok(!url.includes('redirect_uri=https%3A%2F%2F'));
+    assert.ok(url.includes('scope=https%3A%2F%2Fapi.ebay.com%2Foauth%2Fapi_scope%2Fsell.fulfillment.readonly'));
+});
+
+check('EBAY-URL: Sandbox nutzt auth.sandbox.ebay.com', () => {
+    const url = ebayApi.buildAuthorizeUrl({ clientId: 'C', ruName: 'R', env: 'sandbox' }, 'st');
+    assert.ok(url.startsWith('https://auth.sandbox.ebay.com/'));
+});
+
+check('EBAY-mapOrder: minimale Bestellung wirft nicht', () => {
+    const order = ebayApi.mapOrder({});
+    assert.strictEqual(order.orderId, '');
+    assert.strictEqual(order.country, 'DE');
+});
+
+check('EBAY-mapOrder: Adresse/Buyer korrekt zusammengesetzt', () => {
+    const order = ebayApi.mapOrder({
+        orderId: '123!456',
+        buyer: { username: 'knd1' },
+        fulfillmentStartInstructions: [{
+            shippingStep: {
+                shipTo: {
+                    fullName: 'Max Mustermann',
+                    contactAddress: {
+                        addressLine1: 'Hauptstr. 1',
+                        addressLine2: 'EG',
+                        postalCode: '12345',
+                        city: 'Berlin',
+                        countryCode: 'DE'
+                    }
+                }
+            }
+        }],
+        lineItems: [{ title: 'Buch', quantity: 2 }],
+        pricingSummary: { total: { value: '19.99', currency: 'EUR' } },
+        orderFulfillmentStatus: 'IN_PROGRESS'
+    });
+    assert.strictEqual(order.buyer, 'Max Mustermann');
+    assert.strictEqual(order.street, 'Hauptstr. 1 EG');
+    assert.strictEqual(order.zip, '12345');
+    assert.strictEqual(order.city, 'Berlin');
+    assert.strictEqual(order.item, 'Buch');
+    assert.strictEqual(order.total, '19.99 EUR');
+});

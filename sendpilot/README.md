@@ -22,13 +22,53 @@ Versand-Portalen.
 6. **eBay-Übergabe**: Auf der eBay-Verkaufsdetailseite blendet SendPilot eine Leiste ein, die Käuferadresse,
    Artikelnummer und Bestellnummer erfasst. Der Verkauf wird gespeichert, im Popup übernommen (Maße als Entwurf +
    Adresse in die Zwischenablage) oder als Hermes-CSV-Zeile kopiert.
+7. **eBay-API (Sell Fulfillment)**: Mit eigenem eBay-Entwickler-Keyset holt SendPilot offene Verkäufe direkt
+   per API – ohne Adresskopieren. Einrichtung in *Einstellungen → eBay-API*.
 
-### eBay-Import: was geht – und was nicht
+### eBay-Import über die API
+
+Statt die Adresse auf der Verkaufsseite abzulesen (Login nötig, nur was die Seite zeigt), kann SendPilot die
+Bestellungen über die offizielle **Sell Fulfillment API** lesen. Dafür wird ein eBay-Entwickler-Keyset benötigt.
+
+**Warum die Einrichtung etwas anders läuft als bei anderen OAuth-Anbietern:**
+
+- eBay erwartet als `redirect_uri` keine URL, sondern eine **RuName** (Redirect-URL-Name).
+- Als *Auth accepted URL* der RuName akzeptiert eBay **kein** `http://localhost` und kein HTTP – nur HTTPS.
+- Chrome-Extensions können für `chrome.identity.launchWebAuthFlow` die Adresse
+  `https://<extension-id>.chromiumapp.org/` nutzen. Diese wird von Chrome **intern abgefangen** und nie
+  über das Netzwerk aufgerufen. Genau diese Adresse wird in die RuName eingetragen.
+
+**Einrichtung (einmalig):**
+
+1. `developer.ebay.com/my/keys` → Produktions-Keyset. **App ID** = Client-ID, **Cert ID** = Client-Secret.
+2. *User Tokens* → *Add eBay Redirect URL* → RuName übernehmen.
+3. Als *Auth accepted URL* die in den Einstellungen angezeigte `chromiumapp.org`-Adresse eintragen,
+   *OAuth Enabled* ankreuzen, speichern.
+4. Scope `sell.fulfillment.readonly` für das Keyset freischalten.
+5. Werte in *Einstellungen → eBay-API* eintragen → **Speichern** → **Verbinden** → **Bestellungen laden**.
+
+**Haltbarkeit der Tokens:**
+
+| Token | Laufzeit | Erneuerung |
+| --- | --- | --- |
+| Access-Token | 2 Stunden | automatisch 60 s vor Ablauf |
+| Refresh-Token | ~18 Monate | still im Hintergrund, kein erneutes Login |
+
+Ein neues Login ist nur nötig, wenn der Refresh-Token abläuft oder das eBay-Passwort geändert wird.
+
+**Grenzen:**
+
+- eBay liefert `getOrders` nur für die **letzten 90 Tage**.
+- Nur **eigene** Verkäufe (der autorisierte Account), kein Käufer-Konto.
+- Client-Secret und Refresh-Token liegen ausschließlich in `chrome.storage.local` (nicht `sync`), das Secret
+  wird nie geloggt und nie in einer URL übergeben.
+- Ohne eingerichtete API funktioniert die Extension vollständig weiter – die eBay-Seiten-Leiste bleibt der Fallback.
+
+### eBay-Import in Klick-n-Schick und Hermes
 
 Klick-n-Schick **und Hermes** haben einen eigenen eBay-Adressimport im Konto (`/portal/ebayimport` bzw.
 `/meinkonto/ebayimport`). Beide brauchen Login. DHL und Novapost bieten **keinen** eBay-Import für Privatkunden an –
-dort ist die o. g. Übergabe über die eBay-Seite der Weg. Eine direkte eBay-API-Anbindung wäre nur mit einem
-`client_id`/`client_secret` (eBay-Entwickleraccount) möglich und ist aus dieser Extension bewusst herausgehalten.
+dort ist die Übergabe über die eBay-Seite bzw. die API der Weg.
 
 ## Installation (ladenentpackt)
 
@@ -49,6 +89,7 @@ Shortcut fürs Popup: `Alt+Shift+P` (änderbar unter `chrome://extensions/shortc
 | `src/klick-n-schick.js` | Port der Klick-n-Schick PowerTools v1.3.0 (aus `*.part1.js` + `*.part2.js` gebaut) |
 | `popup/*` | Popup (Eingabe, Anbieter, Verlauf) und Optionsseite (Settings, Live-Rechner) |
 | `popup/lib.js` | Geteilte Rechen-/URL-Logik (auch von Tests genutzt) |
+| `popup/ebay-api.js` | eBay OAuth + Sell Fulfillment API (getOrders) |
 | `tools/make-icons.py` | erzeugt `icons/*.png` ohne externe Abhängigkeiten |
 | `tools/build.py` | baut `dist/sendpilot-<version>.zip` |
 | `tests/lib.test.js` | Selbsttests der Rechen-/URL-Logik (`node tests/lib.test.js`) |

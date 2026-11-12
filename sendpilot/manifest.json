@@ -31,14 +31,19 @@
   },
   "permissions": [
     "storage",
-    "activeTab"
+    "activeTab",
+    "identity"
   ],
   "host_permissions": [
     "https://www.paketda.de/*",
     "https://www.klick-n-schick.com/*",
     "https://klick-n-schick.com/*",
     "https://www.dhl.de/*",
-    "https://www.ebay.de/*"
+    "https://www.ebay.de/*",
+    "https://api.ebay.com/*",
+    "https://auth.ebay.com/*",
+    "https://api.sandbox.ebay.com/*",
+    "https://auth.sandbox.ebay.com/*"
   ],
   "content_scripts": [
     {

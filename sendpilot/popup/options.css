@@ -260,3 +260,66 @@ button {
     color: var(--muted);
     font-size: 11px;
 }
+
+/* --- eBay-API --- */
+.grid3 {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+    gap: 10px;
+    margin: 10px 0;
+}
+
+.steps {
+    margin: 8px 0 4px 18px;
+    padding: 0;
+    font-size: 12px;
+    line-height: 1.6;
+    color: #334155;
+}
+
+.steps li { margin-bottom: 4px; }
+
+.mono {
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    font-size: 11px;
+    background: #eef2f7;
+    border-radius: 4px;
+    padding: 2px 5px;
+    word-break: break-all;
+}
+
+button.small {
+    font-size: 11px;
+    padding: 3px 8px;
+    margin-left: 6px;
+}
+
+.msg {
+    margin: 10px 0 0;
+    font-size: 12px;
+    padding: 8px 10px;
+    border-radius: 8px;
+    background: #eef2f7;
+    color: #334155;
+}
+
+.msg.ok { background: #ecfdf5; color: #065f46; }
+.msg.err { background: #fef2f2; color: #991b1b; }
+
+.ebay-orders { margin-top: 12px; display: grid; gap: 8px; }
+
+.ebay-order {
+    border: 1px solid #e2e8f0;
+    border-radius: 8px;
+    padding: 8px 10px;
+    font-size: 12px;
+}
+
+.ebay-order .row {
+    display: flex;
+    justify-content: space-between;
+    gap: 10px;
+    align-items: baseline;
+}
+
+.ebay-order .muted { color: var(--muted); font-size: 11px; }

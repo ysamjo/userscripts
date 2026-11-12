@@ -84,6 +84,61 @@
         <div id="calc-targets" class="targets"></div>
     </section>
 
+    <section class="card" id="ebay-card">
+        <h2>eBay-API (Bestellungen direkt holen)</h2>
+        <p class="hint">Statt Adressen von Hand zu kopieren, liest SendPilot die offenen Verkäufe direkt
+            über die eBay Sell Fulfillment API. Einmal einrichten, danach läuft es ~18 Monate ohne erneutes Einloggen.</p>
+        <div id="ebay-status" class="usage">–</div>
+        <details id="ebay-setup">
+            <summary>Einrichtung (einmalig, ca. 5 Minuten)</summary>
+            <ol class="steps">
+                <li><a href="https://developer.ebay.com/my/keys" target="_blank" rel="noreferrer">developer.ebay.com/my/keys</a>
+                    → Produktions-Keyset anlegen. <strong>App ID</strong> = Client-ID, <strong>Cert ID</strong> = Client-Secret.</li>
+                <li>Bei „User Tokens“ auf <em>Add eBay Redirect URL</em>. Den RuName-Wert übernehmen.</li>
+                <li>Als <em>Auth accepted URL</em> exakt diese Adresse eintragen (eBay erlaubt kein http/localhost):
+                    <code id="ebay-redirect" class="mono">–</code>
+                    <button type="button" id="ebay-copy-redirect" class="ghost small">kopieren</button>
+                </li>
+                <li>OAuth Enabled ankreuzen, speichern. Werte unten eintragen und „Verbinden“ klicken.</li>
+                <li>Passende Scopes im Keyset freischalten: <code class="mono">sell.fulfillment.readonly</code></li>
+            </ol>
+        </details>
+        <div class="grid3">
+            <label class="field"><span>App ID (Client-ID)</span><input id="ebay-client-id" type="text" autocomplete="off" placeholder="DeinApp-SendPilot-PRD-…"></label>
+            <label class="field"><span>Cert ID (Client-Secret)</span><input id="ebay-client-secret" type="password" autocomplete="off" placeholder="PRD-…"></label>
+            <label class="field"><span>RuName</span><input id="ebay-runame" type="text" autocomplete="off" placeholder="DeinApp-SendPilot-PRD-abc123"></label>
+        </div>
+        <div class="grid3">
+            <label class="field"><span>Umgebung</span>
+                <select id="ebay-env">
+                    <option value="production">Produktion</option>
+                    <option value="sandbox">Sandbox</option>
+                </select>
+            </label>
+            <label class="field"><span>Zeitraum</span>
+                <select id="ebay-days">
+                    <option value="7">7 Tage</option>
+                    <option value="30" selected>30 Tage</option>
+                    <option value="90">90 Tage (Maximum)</option>
+                </select>
+            </label>
+            <label class="field"><span>Nur offene Bestellungen</span>
+                <select id="ebay-unfulfilled">
+                    <option value="1" selected>Ja, nur unversendete</option>
+                    <option value="0">Nein, alle</option>
+                </select>
+            </label>
+        </div>
+        <div class="row-actions">
+            <button type="button" id="ebay-save" class="ghost">Speichern</button>
+            <button type="button" id="ebay-connect">Verbinden</button>
+            <button type="button" id="ebay-sync" class="ghost">Bestellungen laden</button>
+            <button type="button" id="ebay-disconnect" class="danger">Trennen</button>
+        </div>
+        <p id="ebay-msg" class="msg" role="status" hidden></p>
+        <div id="ebay-orders" class="ebay-orders"></div>
+    </section>
+
     <section class="card">
         <h2>Deine Nutzung</h2>
         <div id="usage" class="usage">–</div>
@@ -101,6 +156,7 @@
 </footer>
 
 <script src="lib.js"></script>
+<script src="ebay-api.js"></script>
 <script src="options.js"></script>
 </body>
 </html>
