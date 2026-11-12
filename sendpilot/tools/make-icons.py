@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
-"""Erzeugt die SendPilot-Icons als PNG (16/32/48/128 px) ohne externe Abhängigkeiten.
+"""Erzeugt die Pairfob-Icons als PNG (16/32/48/128 px) ohne externe Abhängigkeiten.
 
-Motiv: abgerundetes Quadrat mit Blau-Verlauf, darin ein weißer Papierflieger.
+Motiv: abgerundetes Quadrat mit Türkis-Verlauf, darin ein weißes "P".
 Aufruf: python3 tools/make-icons.py
 """
 
@@ -12,8 +12,8 @@ import zlib
 
 OUT_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "icons")
 
-BLUE_TOP = (37, 99, 235)
-BLUE_BOTTOM = (30, 58, 138)
+TEAL_TOP = (20, 184, 166)       # #14b8a6
+TEAL_BOTTOM = (13, 83, 82)      # #0d5352
 WHITE = (255, 255, 255)
 
 
@@ -38,36 +38,67 @@ def rounded_rect_alpha(x, y, size, radius):
     return max(0.0, min(1.0, (r + 0.5 - dist) if dist > 0 else 1.0))
 
 
-def triangle_sd(p, a, b, c):
-    """Signierte Distanz zu einem Dreieck (negativ innen)."""
-    def sd_edge(pt, v, w):
-        ex, ey = w[0] - v[0], w[1] - v[1]
-        wrx, wry = pt[0] - v[0], pt[1] - v[1]
-        t = max(0.0, min(1.0, (wrx * ex + wry * ey) / (ex * ex + ey * ey)))
-        dx, dy = wrx - ex * t, wry - ey * t
-        return math.hypot(dx, dy), (ex * wry - ey * wrx)
+def letter_alpha(px, py, s, thickness):
+    """Alpha-Wert ob px,py im/dicht am P-Buchstaben liegt."""
+    t = thickness
+    # Vertikaler Balken
+    x0, x1 = s * 0.26, s * 0.26 + t
+    y0, y1 = s * 0.22, s * 0.78
+    # Bogen-Parameter
+    x_arc = s * 0.26
+    x_arc_end = s * 0.74
+    arc_r = (x_arc_end - x_arc) / 2
+    arc_cy = s * 0.50
+    arc_top = arc_cy - arc_r
+    bow_height = arc_top - y0
 
-    d1, s1 = sd_edge(p, a, b)
-    d2, s2 = sd_edge(p, b, c)
-    d3, s3 = sd_edge(p, c, a)
-    inside = (s1 < 0) == (s2 < 0) == (s3 < 0)
-    d = min(d1, d2, d3)
-    return -d if inside else d
+    # Vertikaler Balken
+    if x0 <= px <= x1 and y0 <= py <= y1:
+        return 1.0
 
+    # Rechteck über dem Bogen
+    if x0 <= px <= x_arc_end and y0 <= py <= y0 + bow_height:
+        return 1.0
 
-def plane_polygons(size):
-    """Papierflieger aus drei Dreiecken, relativ zur Icon-Größe."""
-    s = size
-    # Flügel oben (hell), Flügel unten (schattiert), Leitwerk
-    wing_top = [(s * 0.12, s * 0.52), (s * 0.88, s * 0.16), (s * 0.44, s * 0.74)]
-    wing_bottom = [(s * 0.12, s * 0.52), (s * 0.44, s * 0.74), (s * 0.52, s * 0.90)]
-    tail = [(s * 0.44, s * 0.74), (s * 0.60, s * 0.56), (s * 0.56, s * 0.84)]
-    return wing_top, wing_bottom, tail
+    # Halbkreis (Bogen)
+    cx_arc = x_arc + arc_r
+    dx = px - cx_arc
+    if x_arc <= px <= x_arc_end and arc_top <= py <= arc_bot:
+        dy = py - arc_cy
+        if dx * dx + dy * dy <= arc_r * arc_r:
+            return 1.0
+
+    # Kantenglättung
+    aa = 1.5
+
+    # Zum Balken
+    bar_d = min(
+        abs(px - x0) if y0 <= py <= y1 else 999,
+        abs(px - x1) if y0 <= py <= y1 else 999,
+        abs(py - y0) if x0 <= px <= x1 else 999,
+        abs(py - y1) if x0 <= px <= x1 else 999
+    )
+
+    # Zum Bogen-Rechteck
+    rect_d = 999
+    if x0 <= px <= x_arc_end:
+        if abs(py - (y0 + bow_height)) < bow_height:
+            rect_d = min(rect_d, abs(px - x0), abs(px - x_arc_end))
+
+    # Zum Halbkreis
+    arc_d = 999
+    if x_arc - aa <= px <= x_arc_end + aa and arc_top - aa <= py <= arc_bot + aa:
+        if px >= x_arc - aa:
+            arc_d = abs(math.hypot(dx, py - arc_cy) - arc_r)
+
+    d = min(bar_d, rect_d, arc_d)
+    return max(0.0, min(1.0, 1.0 - d / aa)) if d < aa else 0.0
 
 
 def render(size):
     radius = size * 0.22
-    wing_top, wing_bottom, tail = plane_polygons(size)
+    thickness = size * 0.20
+    arc_bot = size * 0.74
     pixels = bytearray()
 
     for y in range(size):
@@ -80,22 +111,14 @@ def render(size):
                 pixels += bytes((0, 0, 0, 0))
                 continue
 
-            base = lerp(BLUE_TOP, BLUE_BOTTOM, py / size)
+            base = lerp(TEAL_TOP, TEAL_BOTTOM, py / size)
 
-            d_top = triangle_sd((px, py), *wing_top)
-            d_bottom = triangle_sd((px, py), *wing_bottom)
-            d_tail = triangle_sd((px, py), *tail)
-
-            # Kantenglättung über 1 px
-            a_top = max(0.0, min(1.0, 0.5 - d_top))
-            a_bottom = max(0.0, min(1.0, 0.5 - d_bottom)) * 0.82
-            a_tail = max(0.0, min(1.0, 0.5 - d_tail)) * 0.68
-
-            color = list(base)
-            for a in (a_bottom, a_tail, a_top):
-                if a <= 0:
-                    continue
-                color = [c + (w - c) * a for c, w in zip(color, WHITE)]
+            # P-Letter Alpha
+            p_alpha = letter_alpha(px, py, size, thickness)
+            if p_alpha > 0:
+                color = [c + (w - c) * p_alpha for c, w in zip(base, WHITE)]
+            else:
+                color = list(base)
 
             alpha = round(255 * bg_alpha)
             pixels += bytes((round(color[0]), round(color[1]), round(color[2]), alpha))
