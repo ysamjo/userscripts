@@ -1,0 +1,84 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>SendPilot</title>
+    <link rel="stylesheet" href="popup.css">
+</head>
+<body>
+<header class="head">
+    <div class="brand">
+        <span class="logo" aria-hidden="true">✈</span>
+        <div>
+            <h1>SendPilot</h1>
+            <p>Maße einmal eingeben – überall nutzen</p>
+        </div>
+    </div>
+    <div class="head-actions">
+        <button type="button" id="clear-draft" class="ghost" title="Eingaben leeren">Leeren</button>
+        <a href="#" id="open-options" class="ghost" title="Einstellungen">Einstellungen</a>
+    </div>
+</header>
+
+<main>
+    <section class="card">
+        <div class="presets">
+            <span class="presets-label">Presets</span>
+            <button type="button" data-preset="30x20x15x1">Klein</button>
+            <button type="button" data-preset="60x39x10x2.5">Mittel</button>
+            <button type="button" data-preset="59x49x18x5">UCS</button>
+            <button type="button" data-preset="60x50x39x12">XL</button>
+        </div>
+
+        <div class="inputs">
+            <label class="field">
+                <span>Länge</span>
+                <span class="unit-wrap"><input id="f_laenge" type="text" inputmode="decimal" placeholder="60" autocomplete="off"><em>cm</em></span>
+            </label>
+            <label class="field">
+                <span>Breite</span>
+                <span class="unit-wrap"><input id="f_breite" type="text" inputmode="decimal" placeholder="40" autocomplete="off"><em>cm</em></span>
+            </label>
+            <label class="field">
+                <span>Höhe</span>
+                <span class="unit-wrap"><input id="f_hoehe" type="text" inputmode="decimal" placeholder="30" autocomplete="off"><em>cm</em></span>
+            </label>
+            <label class="field">
+                <span>Gewicht</span>
+                <span class="unit-wrap"><input id="f_gewicht" type="text" inputmode="decimal" placeholder="5" autocomplete="off"><em>kg</em></span>
+            </label>
+        </div>
+
+        <div class="stats">
+            <div class="stat"><span>Gurtmaß</span><strong id="stat-girth">–</strong></div>
+            <div class="stat"><span>Volumengewicht</span><strong id="stat-vol">–</strong></div>
+            <div class="stat"><span>Frachtgewicht</span><strong id="stat-charge">–</strong></div>
+            <div class="stat"><span>Maße</span><strong id="stat-dims">–</strong></div>
+        </div>
+
+        <div id="warnings" class="warnings"></div>
+
+        <button type="button" id="main-action" class="primary">Paketda-Preisvergleich öffnen</button>
+    </section>
+
+    <section class="card">
+        <h2>Mit diesen Daten öffnen</h2>
+        <div id="couriers" class="courier-grid"></div>
+    </section>
+
+    <section class="card">
+        <h2>Zuletzt geöffnet</h2>
+        <div id="history" class="history"></div>
+    </section>
+</main>
+
+<footer class="foot">
+    <span>Volumengewicht: L×B×H ÷ 5000</span>
+    <span>v1.0.0</span>
+</footer>
+
+<script src="lib.js"></script>
+<script src="popup.js"></script>
+</body>
+</html>

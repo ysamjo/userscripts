@@ -1,0 +1,59 @@
+{
+  "manifest_version": 3,
+  "name": "SendPilot – Paketmaße einmal eingeben",
+  "short_name": "SendPilot",
+  "version": "1.0.0",
+  "key": "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAt1Kp0nQ0c0h7M0SxU3fm7RKrD7kSPHdcvJTeHwXLnH1uXGxWr6Jq5tJvrObEyjcXWd3I2sgbqIQZF6Ir0/rJg9ryNWsVXLdO3bvNV8YMz2qNVvCEwBaQrL7hmXpssqzCRXazPzz4OkVJrC3NylFT4bvzYOTzAF5CBQTyHHSXyjATii2vGUgvxQ0fMaTEAVz8z4TJCkFYcnDMKqLdO0xrz5xUfG0V0MUyTzBxAcnkXwGSM4dOh8TADihQvb+Q07mqEfvAGxYY9VWc6qr6CmuH4HqXlXcToY2GBkPuFrw55Ru0uzXi9BvIcRj3TGPCS6l1XKuC1Bsvcwq7oRT9hwIDAQAB",
+  "description": "Maße & Gewicht einmal eintippen: SendPilot öffnet damit Paketda-Preisvergleich, Klick-n-Schick, Packlink, DHL & Co. mit vorausgefüllten Daten.",
+  "minimum_chrome_version": "116",
+  "icons": {
+    "16": "icons/icon16.png",
+    "32": "icons/icon32.png",
+    "48": "icons/icon48.png",
+    "128": "icons/icon128.png"
+  },
+  "action": {
+    "default_title": "SendPilot – Maße eingeben",
+    "default_popup": "popup/popup.html",
+    "default_icon": {
+      "16": "icons/icon16.png",
+      "32": "icons/icon32.png",
+      "48": "icons/icon48.png",
+      "128": "icons/icon128.png"
+    }
+  },
+  "options_ui": {
+    "page": "popup/options.html",
+    "open_in_tab": true
+  },
+  "permissions": ["storage", "activeTab"],
+  "host_permissions": [
+    "https://www.paketda.de/*",
+    "https://www.klick-n-schick.com/*",
+    "https://klick-n-schick.com/*"
+  ],
+  "content_scripts": [
+    {
+      "matches": ["https://www.paketda.de/paket-preis-rechner.php*"],
+      "js": ["src/paketda.js"],
+      "run_at": "document_idle"
+    },
+    {
+      "matches": [
+        "https://www.klick-n-schick.com/portal/*",
+        "https://klick-n-schick.com/portal/*"
+      ],
+      "js": ["src/klick-n-schick.js"],
+      "run_at": "document_idle"
+    }
+  ],
+  "commands": {
+    "_execute_action": {
+      "suggested_key": {
+        "default": "Alt+Shift+P",
+        "mac": "Alt+Shift+P"
+      },
+      "description": "SendPilot-Dialog öffnen"
+    }
+  }
+}

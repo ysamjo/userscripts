@@ -1,0 +1,106 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>SendPilot – Einstellungen</title>
+    <link rel="stylesheet" href="options.css">
+</head>
+<body>
+<header class="head">
+    <div class="brand">
+        <span class="logo" aria-hidden="true">✈</span>
+        <div>
+            <h1>SendPilot</h1>
+            <p>Einstellungen & Live-Kalkulation</p>
+        </div>
+    </div>
+</header>
+
+<main>
+    <section class="card">
+        <h2>Wohin soll Enter führen?</h2>
+        <p class="hint">Der Primärbutton im Popup und die Enter-Taste öffnen dieses Ziel.</p>
+        <label class="row">
+            <span>Primäres Ziel</span>
+            <select id="quick-provider">
+                <option value="paketda">Paketda Preisvergleich</option>
+                <option value="kns">Klick-n-Schick (DPD-Paketschein)</option>
+                <option value="packlink">Packlink</option>
+                <option value="dhl">DHL Online-Porto</option>
+                <option value="hermes">Hermes</option>
+                <option value="dpd">DPD</option>
+                <option value="gls">GLS</option>
+                <option value="ups">UPS</option>
+            </select>
+        </label>
+        <label class="row">
+            <span>Zielland</span>
+            <select id="country">
+                <option value="DE">Deutschland</option>
+                <option value="AT">Österreich</option>
+                <option value="CH">Schweiz</option>
+                <option value="NL">Niederlande</option>
+                <option value="FR">Frankreich</option>
+            </select>
+        </label>
+        <label class="row">
+            <span>Volumendivisor</span>
+            <select id="divisor">
+                <option value="5000">5000 (DHL, UPS, Packlink)</option>
+                <option value="6000">6000 (DPD, GLS, Hermes)</option>
+            </select>
+        </label>
+        <label class="row">
+            <span>Toolbar-Klick</span>
+            <label class="inline"><input type="checkbox" id="click-paketda"> Direkt Paketda öffnen statt Popup</label>
+        </label>
+        <p class="hint">Hinweis: Chrome öffnet bei aktivem Popup Ein Klick immer das Popup – „Direkt öffnen“ gilt für den Tastatur-Shortcut (Alt+Shift+P) und die Schaltfläche „Maße &amp; Preise“ in Paketda/Klick-n-Schick.</p>
+    </section>
+
+    <section class="card">
+        <h2>Live-Kalkulation</h2>
+        <div class="calc">
+            <label class="field"><span>Länge (cm)</span><input id="c_laenge" type="text" inputmode="decimal" placeholder="60"></label>
+            <label class="field"><span>Breite (cm)</span><input id="c_breite" type="text" inputmode="decimal" placeholder="40"></label>
+            <label class="field"><span>Höhe (cm)</span><input id="c_hoehe" type="text" inputmode="decimal" placeholder="30"></label>
+            <label class="field"><span>Gewicht (kg)</span><input id="c_gewicht" type="text" inputmode="decimal" placeholder="5"></label>
+        </div>
+        <table class="calc-table">
+            <thead>
+            <tr><th>Kennzahl</th><th>Wert</th></tr>
+            </thead>
+            <tbody id="calc-body">
+            <tr><td>Sortierte Maße</td><td id="c-dims">–</td></tr>
+            <tr><td>Gurtmaß (L + 2B + 2H)</td><td id="c-girth">–</td></tr>
+            <tr><td>Volumengewicht</td><td id="c-vol">–</td></tr>
+            <tr><td>Frachtgewicht (DHL 5000)</td><td id="c-charge-5000">–</td></tr>
+            <tr><td>Frachtgewicht (DPD 6000)</td><td id="c-charge-6000">–</td></tr>
+            <tr><td>Brief-Variante</td><td id="c-letter">–</td></tr>
+            <tr><td>DPD-Paketklasse</td><td id="c-dpd">–</td></tr>
+            <tr><td>Klick-n-Schick möglich</td><td id="c-kns">–</td></tr>
+        </tbody>
+        </table>
+        <div id="calc-targets" class="targets"></div>
+    </section>
+
+    <section class="card">
+        <h2>Deine Nutzung</h2>
+        <div id="usage" class="usage">–</div>
+        <div class="row-actions">
+            <button type="button" id="clear-history" class="danger">Verlauf löschen</button>
+            <button type="button" id="export-settings" class="ghost">Einstellungen exportieren</button>
+        </div>
+        <pre id="export-out" class="export-out" hidden></pre>
+    </section>
+</main>
+
+<footer class="foot">
+    <span>SendPilot · lokale Verarbeitung, keine Server</span>
+    <span id="version">v1.0.0</span>
+</footer>
+
+<script src="lib.js"></script>
+<script src="options.js"></script>
+</body>
+</html>
