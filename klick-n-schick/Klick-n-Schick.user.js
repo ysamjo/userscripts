@@ -1,17 +1,18 @@
 // ==UserScript==
 // @name         Klick-n-Schick PowerTools
 // @namespace    http://tampermonkey.net/
-// @version      1.3.0
-// @description  Erleichtert die Nutzung von Klick-n-Schick: Login speichern & Auto-Login, Sperrgut standardmäßig auf Nein, LEGO-Presets (Mittel, Groß/UCS, Titanic), Maße aus URL übernehmen, eBay-Verkäufe automatisch importieren, immer DPD vorauswählen, Paketscheine automatisch zuschneiden & zentrieren (Keynote-Workflow automatisiert), 1-Klick Drucken & PDF-Export, Adress- & Tracking-Kopierer und Warenkorb direkt zur Kasse leiten.
+// @version      1.4.0
+// @description  Erleichtert die Nutzung von Klick-n-Schick: Dauerhafter Auto-Login auf allen Seiten, Session Keep-Alive (verhindert ASP.NET-Session-Timeout), Cookie-Persistenz, Sperrgut-Standard 'Nein', LEGO-Presets, Maße aus URL, eBay-Auto-Import, DPD-Standard, automatisiertes Beschneiden & Zentrieren von Paketscheinen (Keynote-Workflow), Direkt-Druck, Adress- & Tracking-Kopierer.
 // @author       Andreas Stegmann
-// @match        https://www.klick-n-schick.com/portal/*
-// @match        https://klick-n-schick.com/portal/*
+// @match        https://www.klick-n-schick.com/*
+// @match        https://klick-n-schick.com/*
 // @icon         https://www.klick-n-schick.com/portal/favicon.png
 // @require      https://cdn.jsdelivr.net/npm/pdf-lib@1.17.1/dist/pdf-lib.min.js
 // @grant        GM_setValue
 // @grant        GM_getValue
 // @grant        GM_deleteValue
 // @grant        GM_xmlhttpRequest
+// @grant        GM_cookie
 // @connect      klick-n-schick.com
 // @connect      www.klick-n-schick.com
 // @connect      cdn.jsdelivr.net
@@ -77,7 +78,8 @@
         enablePresets: storage.get('cfg_enablePresets', true),
         enableCopyTools: storage.get('cfg_enableCopyTools', true),
         autoCheckAGB: storage.get('cfg_autoCheckAGB', true),
-        autoAcceptCookies: storage.get('cfg_autoAcceptCookies', true)
+        autoAcceptCookies: storage.get('cfg_autoAcceptCookies', true),
+        sessionKeepAlive: storage.get('cfg_sessionKeepAlive', true)
     };
 
     const isIframe = window.self !== window.top;
@@ -198,8 +200,26 @@
         }, duration);
     }
 
-    // --- 4. FEATURE: Login speichern & Auto-Login ---
+    // --- 4. FEATURE: Login speichern & lückenloser Auto-Login ---
+    function handlePostLoginRedirect() {
+        if (isIframe) return;
+        const isLoggedIn = !!document.querySelector('#ContentPlaceHolder1_loginpanel_btnLogout, input[name*="btnLogout"]');
+        if (!isLoggedIn) return;
+
+        const intended = sessionStorage.getItem('kns_intended_destination');
+        if (intended) {
+            sessionStorage.removeItem('kns_intended_destination');
+            if (window.location.href !== intended) {
+                showToast('⚡ Zurück zum gewünschten Bereich...', 'info', 1500);
+                setTimeout(() => {
+                    window.location.replace(intended);
+                }, 250);
+            }
+        }
+    }
+
     function setupLoginEnhancements() {
+        handlePostLoginRedirect();
         if (!config.saveLogin) return;
 
         const userInputs = document.querySelectorAll(`
@@ -222,6 +242,52 @@
             userInput.setAttribute('autocomplete', 'username');
             passInput.setAttribute('autocomplete', 'current-password');
             if (form) form.setAttribute('autocomplete', 'on');
+
+            const savedCreds = storage.get('login_credentials', null);
+            if (savedCreds && savedCreds.username) {
+                if (!userInput.value || userInput.value !== savedCreds.username) {
+                    userInput.value = savedCreds.username;
+                    userInput.dispatchEvent(new Event('input', { bubbles: true }));
+                    userInput.dispatchEvent(new Event('change', { bubbles: true }));
+                }
+                if (savedCreds.password && (!passInput.value || passInput.value !== savedCreds.password)) {
+                    passInput.value = savedCreds.password;
+                    passInput.dispatchEvent(new Event('input', { bubbles: true }));
+                    passInput.dispatchEvent(new Event('change', { bubbles: true }));
+                }
+
+                // Lückenloser Auto-Login auf jeder Seite (sobald Benutzer nicht angemeldet ist)
+                if (config.autoLogin && savedCreds.username && savedCreds.password) {
+                    const submitBtn = document.querySelector(`
+                        #ContentPlaceHolder1_loginpanel_btnLogin,
+                        input[type="submit"][name*="btnLogin"],
+                        input[type="submit"][id*="btnLogin"],
+                        input[type="submit"][value*="anmelden" i]
+                    `);
+                    const lblError = document.querySelector('#ContentPlaceHolder1_loginpanel_lblError');
+                    const hasError = lblError && lblError.innerText.trim().length > 0;
+                    const alreadyLoggedIn = !!document.querySelector('#ContentPlaceHolder1_loginpanel_btnLogout, input[name*="btnLogout"]');
+
+                    if (submitBtn && !alreadyLoggedIn && !hasError) {
+                        const lastAttempt = Number.parseInt(sessionStorage.getItem('kns_last_autologin_time') || '0', 10);
+                        const now = Date.now();
+                        // 8 Sekunden Throttle gegen Endlosschleifen
+                        if (now - lastAttempt > 8000) {
+                            sessionStorage.setItem('kns_last_autologin_time', String(now));
+
+                            const currentHref = window.location.href;
+                            if (!currentHref.includes('default.aspx') && !currentHref.endsWith('/portal/')) {
+                                sessionStorage.setItem('kns_intended_destination', currentHref);
+                            }
+
+                            showToast('⚡ Automatischer Login läuft...', 'info', 1500);
+                            setTimeout(() => {
+                                submitBtn.click();
+                            }, 350);
+                        }
+                    }
+                }
+            }
 
             if (userInput.dataset.knsInitialized === 'true') return;
             userInput.dataset.knsInitialized = 'true';
@@ -253,13 +319,7 @@
             container.appendChild(checkbox);
             container.appendChild(label);
 
-            const savedCreds = storage.get('login_credentials', null);
             if (savedCreds && savedCreds.username) {
-                userInput.value = savedCreds.username;
-                if (savedCreds.password) {
-                    passInput.value = savedCreds.password;
-                }
-
                 const deleteLink = document.createElement('a');
                 deleteLink.href = '#';
                 deleteLink.textContent = '[Löschen]';
@@ -276,20 +336,6 @@
                     }
                 });
                 container.appendChild(deleteLink);
-
-                if (config.autoLogin && savedCreds.username && savedCreds.password) {
-                    const submitBtn = form?.querySelector('input[type="submit"][name*="btnLogin"], input.btncheck, input.btncheckblue');
-                    const isLoginPage = currentPath.includes('login') || document.querySelector('#ContentPlaceHolder1_boxPWAendern');
-                    const hasAttempted = sessionStorage.getItem('kns_autologin_attempted');
-
-                    if (submitBtn && isLoginPage && !hasAttempted) {
-                        sessionStorage.setItem('kns_autologin_attempted', 'true');
-                        showToast('Auto-Login in 1 Sekunde...', 'info', 1200);
-                        setTimeout(() => {
-                            submitBtn.click();
-                        }, 800);
-                    }
-                }
             }
 
             const parentRow = passInput.closest('tr, li, div');
@@ -310,7 +356,7 @@
                 }
             };
 
-            const submitBtn = form?.querySelector('input[type="submit"][name*="btnLogin"], input.btncheck, input.btncheckblue');
+            const submitBtn = form?.querySelector('#ContentPlaceHolder1_loginpanel_btnLogin, input[type="submit"][name*="btnLogin"], input.btncheck, input.btncheckblue');
             if (submitBtn) {
                 submitBtn.addEventListener('click', saveHandler);
             }
@@ -318,6 +364,76 @@
                 form.addEventListener('submit', saveHandler);
             }
         });
+    }
+
+    // --- 4.5 FEATURE: Session Keep-Alive & Cookie-Persistenz ---
+    function setupSessionKeepAlive() {
+        if (window._knsKeepAliveStarted || isIframe) return;
+        window._knsKeepAliveStarted = true;
+
+        // Alle 8 Minuten Hintergrund-Request senden, damit die ASP.NET-Session (20 min Timeout) nicht verfällt
+        const KEEP_ALIVE_INTERVAL = 8 * 60 * 1000;
+
+        setInterval(async () => {
+            if (!config.sessionKeepAlive) return;
+            const isLoggedIn = !!document.querySelector('#ContentPlaceHolder1_loginpanel_btnLogout, input[name*="btnLogout"]');
+            if (!isLoggedIn) return;
+
+            try {
+                await fetch('/portal/', {
+                    method: 'GET',
+                    credentials: 'same-origin',
+                    headers: { 'X-Requested-With': 'XMLHttpRequest' },
+                    cache: 'no-store'
+                });
+                console.log('[KnS] Session Keep-Alive Ping erfolgreich gesendet');
+            } catch (err) {
+                console.warn('[KnS] Session Keep-Alive fehlgeschlagen:', err);
+            }
+        }, KEEP_ALIVE_INTERVAL);
+
+        persistCookiesLongTerm();
+    }
+
+    function persistCookiesLongTerm() {
+        try {
+            const expires = 'expires=' + new Date(Date.now() + 365 * 86400000).toUTCString();
+            document.cookie = `bpscookiesaccept=1; path=/; ${expires}; SameSite=Lax`;
+            document.cookie = `bpscookiesfunktional=1; path=/; ${expires}; SameSite=Lax`;
+            document.cookie = `bpscookiesstatistiken=1; path=/; ${expires}; SameSite=Lax`;
+            document.cookie = `bpscookiesmarketing=1; path=/; ${expires}; SameSite=Lax`;
+        } catch (e) {}
+
+        if (typeof GM_cookie === 'undefined' || typeof GM_cookie.list !== 'function') return;
+
+        try {
+            GM_cookie.list({ domain: 'klick-n-schick.com' }, (cookies, error) => {
+                if (error || !cookies) return;
+                const oneYearLater = (Date.now() / 1000) + (365 * 24 * 3600);
+
+                cookies.forEach((cookie) => {
+                    if (cookie.session || cookie.expirationDate === undefined || cookie.expirationDate === -1 || cookie.name.startsWith('bpscookies')) {
+                        GM_cookie.set({
+                            url: 'https://www.klick-n-schick.com' + (cookie.path || '/'),
+                            name: cookie.name,
+                            value: cookie.value,
+                            domain: cookie.domain || 'www.klick-n-schick.com',
+                            path: cookie.path || '/',
+                            secure: cookie.secure,
+                            httpOnly: cookie.httpOnly,
+                            sameSite: cookie.sameSite || 'lax',
+                            expirationDate: oneYearLater
+                        }, (setErr) => {
+                            if (!setErr) {
+                                console.log(`[KnS] Cookie ${cookie.name} auf 1 Jahr verlängert`);
+                            }
+                        });
+                    }
+                });
+            });
+        } catch (e) {
+            console.warn('[KnS] GM_cookie Fehler:', e);
+        }
     }
 
     // --- 5. FEATURE: Sperrgut standardmäßig auf NEIN ---
@@ -1394,7 +1510,15 @@
                     <hr style="border:0;border-top:1px solid #f3f4f6;margin:4px 0;">
                     <label style="display:flex;align-items:center;gap:8px;cursor:pointer;">
                         <input type="checkbox" id="cfg_saveLogin" ${config.saveLogin ? 'checked' : ''}>
-                        <span>Login speichern & Auto-Fill</span>
+                        <span><strong>Zugangsdaten merken</strong> & Auto-Fill</span>
+                    </label>
+                    <label style="display:flex;align-items:center;gap:8px;cursor:pointer;">
+                        <input type="checkbox" id="cfg_autoLogin" ${config.autoLogin ? 'checked' : ''}>
+                        <span><strong>Auto-Login</strong> (sofort anmelden, wenn ausgeloggt)</span>
+                    </label>
+                    <label style="display:flex;align-items:center;gap:8px;cursor:pointer;">
+                        <input type="checkbox" id="cfg_sessionKeepAlive" ${config.sessionKeepAlive ? 'checked' : ''}>
+                        <span><strong>Session aktiv halten</strong> (Keep-Alive Ping alle 8 min)</span>
                     </label>
                     <label style="display:flex;align-items:center;gap:8px;cursor:pointer;">
                         <input type="checkbox" id="cfg_urlDimensions" ${config.urlDimensions ? 'checked' : ''}>
@@ -1413,7 +1537,7 @@
                     <button id="kns-clear-creds" style="background:#fee2e2;border:1px solid #f87171;color:#b91c1c;padding:4px 8px;border-radius:4px;cursor:pointer;font-size:11px;">
                         Gespeicherte Logins löschen
                     </button>
-                    <span style="font-size:11px;color:#9ca3af;">v1.3.0</span>
+                    <span style="font-size:11px;color:#9ca3af;">v1.4.0</span>
                 </div>
             `;
 
@@ -1430,6 +1554,8 @@
                 'cfg_enablePresets',
                 'cfg_enableCopyTools',
                 'cfg_saveLogin',
+                'cfg_autoLogin',
+                'cfg_sessionKeepAlive',
                 'cfg_urlDimensions',
                 'cfg_autoImportEbay',
                 'cfg_autoCheckout'
@@ -1477,6 +1603,7 @@
     // --- 16. Initialisierung & MutationObserver ---
     function runAll() {
         setupLoginEnhancements();
+        setupSessionKeepAlive();
         setupDefaultSperrgutNo();
         setupPresetsInPopup();
         applyDimensions();

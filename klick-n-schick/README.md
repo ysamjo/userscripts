@@ -4,9 +4,14 @@ Tampermonkey / Violentmonkey Userscript zur Optimierung und Automatisierung von 
 
 ---
 
-## Enthaltene Funktionen (v1.3.0)
+## Enthaltene Funktionen (v1.4.0)
 
-1. **Paketschein automatisch zuschneiden, zentrieren & drucken (Keynote-Workflow automatisiert)**:
+1. **Dauerhafter Auto-Login & Session Keep-Alive (Nie wieder manuell anmelden!)**:
+   - **Lückenloser Auto-Login**: Erkennt automatisch auf *jeder* Seite (`/portal/`, `meinepaketscheine.aspx`, etc.), wenn man abgemeldet ist, füllt die Zugangsdaten aus und loggt sich in < 0.5s automatisch ein.
+   - **Intelligente Rückleitung**: Wer direkt eine Unterseite aufruft (z. B. Meine Paketscheine), wird nach dem Login automatisch genau dorthin zurückgeleitet.
+   - **Session Keep-Alive**: Sendet alle 8 Minuten einen leichten Hintergrund-Ping, sodass die serverseitige 20-Minuten-ASP.NET-Sitzung niemals unbemerkt verfällt, solange ein Tab geöffnet ist.
+   - **Cookie-Persistenz**: Verlängert funktionale Cookies und Session-Cookies automatisch via `GM_cookie` bzw. `document.cookie` auf 1 Jahr.
+2. **Paketschein automatisch zuschneiden, zentrieren & drucken (Keynote-Workflow automatisiert)**:
    - **Rechte Seite abschneiden**: Entfernt automatisch die überflüssige Kundenquittung aus dem JasperReports-A4-Bogen.
    - **Auf DIN A4 zentrieren**: Zentriert das DPD-Paketlabel exakt in der Mitte der A4-Seite (genau wie bisher manuell in Keynote) – perfekt für Standard-Druckerpapier.
    - **1-Klick Direkt-Druck (`🖨️ Drucken`)**: Öffnet ohne Umwege direkt den Druckdialog für das beschnittene, zentrierte Label.
@@ -15,17 +20,15 @@ Tampermonkey / Violentmonkey Userscript zur Optimierung und Automatisierung von 
      - `🏷️ A6`: Reines DIN A6 Etikett (für Label- & Thermodrucker).
      - `Orig.`: Unbeschnittenes Original-PDF mit Quittung falls nötig.
    - **Top-Toolbar in `showfile.aspx`**: Sofortige Aktionsleiste beim Öffnen des Paketschein-Fensters (inkl. konfigurierbarem Sofort-Druck).
-2. **Sperrgut standardmäßig auf NEIN**:
+3. **Sperrgut standardmäßig auf NEIN**:
    - Verhindert teure Sperrgutzuschläge: Im Packstück-Popup (`addpackstueck.aspx` und `addpackstueckebay.aspx`) wird Sperrgut standardmäßig immer auf **„nein“** gesetzt (`rbSperrgutNo`).
-3. **Keine abgeschnittenen Popups mehr**:
+4. **Keine abgeschnittenen Popups mehr**:
    - Die Höhe des Packstück-Modals wird automatisch auf min. 510 px vergrößert, sodass alle Eingabefelder und der Button „Packstück hinzufügen“ vollständig sichtbar sind.
-4. **1-Klick LEGO RTS-Presets im Packstück-Popup**:
+5. **1-Klick LEGO RTS-Presets im Packstück-Popup**:
    - **Klein** (30 × 20 × 15 cm | 1.0 kg) — Speed Champions, kleine Sets.
    - **Mittel / AT-AT** (60 × 39 × 10 cm | 2.5 kg) — z. B. Star Wars AT-AT 75288 u. ä. (OVP ca. 58,2 × 37,8 × 8,7 cm).
    - **Groß / UCS** (59 × 49 × 18 cm | 5.0 kg) — Motorisierter Leuchtturm, Ideas-Klassiker.
    - **XL / Titanic** (60 × 50 × 39 cm | 12.0 kg) — LEGO Titanic, Millennium Falcon.
-5. **Login speichern & Auto-Fill / Auto-Login**:
-   - Standard-HTML5-Attribute für Passwortmanager + optionale Userscript-Checkbox „Zugangsdaten merken“.
 6. **Maße aus URL-Parametern**:
    - `?laenge=...&breite=...&hoehe=...&gewicht=...` werden automatisch übernommen.
 7. **eBay automatisch importieren**:
