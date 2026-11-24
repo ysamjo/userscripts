@@ -16,9 +16,12 @@ Versand-Portalen.
 4. **Weitere Paketdienste** mit einem Klick: Packlink, DHL Online-Porto, Hermes, DPD, GLS, UPS, Deutsche Post.
    Wo Portale keine URL-Parameter akzeptieren, wird die Seite geöffnet und die Maße bleiben in der Zwischenablage
    bzw. im Verlauf verfügbar.
-5. **DHL-Autofill**: Auf `dhl.de/…/online-frankieren.html` werden Maße & Gewicht aus SendPilot automatisch in die
-   Formularfelder eingetragen (native Inputs + Events, damit React sie übernimmt), sobald sie im Versand-Schritt
-   erscheinen. Füllt nie belegte Felder, ignoriert E-Mail/Adresse/IBAN, meldet gefüllte Felder per Badge.
+5. **Autofill für DHL, Hermes und DPD**: Auf `dhl.de/…/online-frankieren.html`, `myhermes.de/versenden/…` und
+   `my.dpd.de/sending/…` werden Maße & Gewicht aus SendPilot automatisch in die Formularfelder eingetragen
+   (native Inputs + Events, damit React sie übernimmt), sobald sie erscheinen. Hermes und DPD haben für
+   Privatkunden keine cm-Felder – dort wählt SendPilot stattdessen die kleinste passende Paketklasse
+   (längste + kürzeste Seite; DPD XL über das Gurtmaß). Füllt nie belegte Felder, ignoriert E-Mail/Adresse/IBAN,
+   meldet das Ergebnis per Badge.
 6. **eBay-Übergabe**: Auf der eBay-Verkaufsdetailseite blendet SendPilot eine Leiste ein, die Käuferadresse,
    Artikelnummer und Bestellnummer erfasst. Der Verkauf wird gespeichert, im Popup übernommen (Maße als Entwurf +
    Adresse in die Zwischenablage) oder als Hermes-CSV-Zeile kopiert.
@@ -114,8 +117,11 @@ python3 tools/build.py      # ZIP für den Store
 ## Grenzen
 
 - `myhermes.de`, `dpd.com`, `gls-group.com`, `ups.com` nehmen Maße **nicht** per URL entgegen –
-  dort wird nur das Portal geöffnet (Maße stehen im Verlauf bereit).
-- DHL-Autofill hängt an den aktuellen Feldnamen von `dhl.de` (React); ändert DHL sie, füllt SendPilot nichts statt falsch.
+  dort wird das Portal geöffnet; Hermes/DPD bekommen die Werte per Autofill, sonst stehen sie im Verlauf bereit.
+- Der Autofill hängt an den aktuellen Feldnamen der Portale (React); ändern DHL/Hermes/DPD sie, füllt SendPilot
+  nichts statt falsch.
+- Die Paketklasse bei Hermes/DPD wird nur gesetzt, wenn das Formular eine erkennbare Radio-Gruppe mit mindestens
+  drei Klassenwerten oder ein Klassen-Auswahlfeld hat. Eine bereits gewählte Klasse bleibt unangetastet.
 - Der Hermes-eBay-Import liegt hinter der Login-Wall – SendPilot übernimmt die Adresse deshalb über die eBay-Seite
   (kopieren bzw. als CSV-Zeile bereitstellen).
 - Chrome zeigt bei aktivem Popup immer das Popup; „Direkt zu Paketda“ gilt für Shortcut und Buttons auf den Seiten.

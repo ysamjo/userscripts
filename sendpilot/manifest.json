@@ -39,6 +39,9 @@
     "https://www.klick-n-schick.com/*",
     "https://klick-n-schick.com/*",
     "https://www.dhl.de/*",
+    "https://www.myhermes.de/*",
+    "https://www.dpd.com/*",
+    "https://my.dpd.de/*",
     "https://www.ebay.de/*",
     "https://api.ebay.com/*",
     "https://auth.ebay.com/*",
@@ -70,6 +73,29 @@
         "https://www.dhl.de/de/privatkunden/pakete-versenden/*"
       ],
       "js": [
+        "popup/lib.js",
+        "src/dhl-autofill.js"
+      ],
+      "run_at": "document_idle"
+    },
+    {
+      "matches": [
+        "https://www.myhermes.de/versenden/*"
+      ],
+      "js": [
+        "popup/lib.js",
+        "src/dhl-autofill.js"
+      ],
+      "run_at": "document_idle"
+    },
+    {
+      "matches": [
+        "https://www.dpd.com/de/de/paketversand/*",
+        "https://www.dpd.com/de/de/versenden/*",
+        "https://my.dpd.de/sending/*"
+      ],
+      "js": [
+        "popup/lib.js",
         "src/dhl-autofill.js"
       ],
       "run_at": "document_idle"

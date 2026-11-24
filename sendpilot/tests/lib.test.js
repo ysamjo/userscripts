@@ -89,6 +89,42 @@ check('Briefklassifizierung: zu dick für Maxibrief', () => {
     assert.strictEqual(lib.letterTier({ laenge: 30, breite: 20, hoehe: 10, gewicht: 0.5 }), null);
 });
 
+// --- Paketklassen (Hermes/DPD) ---
+
+check('Paketklasse: 60+30 = 90 cm ist bei Hermes L und bei DPD L', () => {
+    assert.strictEqual(lib.parcelClass('hermes', pkg).id, 'L');
+    assert.strictEqual(lib.parcelClass('dpd', pkg).id, 'L');
+});
+
+check('Paketklasse: kleinste passende Klasse gewinnt', () => {
+    const klein = { laenge: 30, breite: 20, hoehe: 10 };
+    assert.strictEqual(lib.parcelClass('hermes', klein).id, 'S');
+    assert.strictEqual(lib.parcelClass('dpd', klein).id, 'S');
+});
+
+check('Paketklasse: Hermes Päckchen bis 37 cm', () => {
+    assert.strictEqual(lib.parcelClass('hermes', { laenge: 25, breite: 20, hoehe: 10 }).id, 'HP');
+});
+
+check('Paketklasse: DPD XL über Gurtmaß', () => {
+    const gross = { laenge: 100, breite: 50, hoehe: 40 };
+    const cls = lib.parcelClass('dpd', gross);
+    assert.strictEqual(cls.id, 'XL');
+    assert.strictEqual(cls.girth, 100 + 100 + 80);
+    assert.strictEqual(lib.parcelClass('hermes', gross).id, 'XL');
+});
+
+check('Paketklasse: zu groß wird als nicht passend gemeldet', () => {
+    const riesig = { laenge: 180, breite: 50, hoehe: 40 };
+    assert.strictEqual(lib.parcelClass('hermes', riesig).fits, false);
+    assert.strictEqual(lib.parcelClass('dpd', riesig).fits, false);
+});
+
+check('Paketklasse: ohne vollständige Maße null', () => {
+    assert.strictEqual(lib.parcelClass('dpd', { laenge: 60, breite: 40 }), null);
+    assert.strictEqual(lib.parcelClass('gibtsnicht', pkg), null);
+});
+
 check('Formatierung nutzt deutsches Dezimalkomma', () => {
     assert.strictEqual(lib.formatKg(14.4), '14,40 kg');
     assert.strictEqual(lib.formatKg(0), '–');

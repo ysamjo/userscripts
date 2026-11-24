@@ -167,6 +167,47 @@
         return pkg;
     }
 
+    // --- Paketklassen (Hermes/DPD) -----------------------------------------
+    //
+    // Beide Portale rechnen mit "längste + kürzeste Seite". DPD XL läuft
+    // abweichend über das Gurtmaß, Hermes nennt das Päckchen im Formular "HP".
+
+    const PARCEL_CLASSES = {
+        hermes: [
+            { id: 'HP', label: 'Hermes Päckchen', maxSum: 37 },
+            { id: 'S', label: 'S-Paket', maxSum: 50 },
+            { id: 'M', label: 'M-Paket', maxSum: 80 },
+            { id: 'L', label: 'L-Paket', maxSum: 120 },
+            { id: 'XL', label: 'XL-Paket', maxSum: 200 }
+        ],
+        dpd: [
+            { id: 'XS', label: 'DPD XS', maxSum: 35 },
+            { id: 'S', label: 'DPD S', maxSum: 50 },
+            { id: 'M', label: 'DPD M', maxSum: 70 },
+            { id: 'L', label: 'DPD L', maxSum: 90 },
+            { id: 'XL', label: 'DPD XL', maxGirth: 300 }
+        ]
+    };
+
+    /**
+     * Kleinste Paketklasse, in die das Paket passt.
+     * null bei unvollständigen Maßen, sonst { id, label, fits, sum, girth }.
+     */
+    function parcelClass(providerId, pkg) {
+        const classes = PARCEL_CLASSES[providerId];
+        const dims = sortedDims(pkg);
+        if (!classes || dims.length < 3) return null;
+        const longest = dims[0];
+        const shortest = dims[dims.length - 1];
+        const sum = longest + shortest;
+        const girth = longest + 2 * dims[1] + 2 * shortest;
+        for (const entry of classes) {
+            const fits = entry.maxSum != null ? sum <= entry.maxSum : girth <= entry.maxGirth;
+            if (fits) return { id: entry.id, label: entry.label, fits: true, sum, girth };
+        }
+        return { id: null, label: null, fits: false, sum, girth };
+    }
+
     const LETTER_TIERS = [
         { name: 'Standardbrief', maxL: 23.5, maxB: 12.5, maxH: 0.5, maxW: 20, price: 0.95 },
         { name: 'Kompaktbrief', maxL: 23.5, maxB: 12.5, maxH: 1, maxW: 50, price: 1.10 },
@@ -198,6 +239,8 @@
         EBAY_ORDER_FIELDS,
         EBAY_CSV_HEADER,
         EBAY_IMPORT_SUPPORT,
+        PARCEL_CLASSES,
+        parcelClass,
         ebayAddressBlock,
         ebayCsvRow,
         orderToPackage,
