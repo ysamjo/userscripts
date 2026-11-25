@@ -930,9 +930,55 @@
         });
 
         // C) Direkter PDF-Download- & Druck-Buttons in meinepaketscheine
+        // Das alte Tampermonkey-Skript setzt dasselbe Flag und gewinnt sonst das Rennen –
+        // deshalb eigene Kennung, und dessen Leiste wird ersetzt.
+        // Die Portal-CSS stylt Buttons global; eigene Regeln mit !important halten die Leiste
+        // einzeilig, unabhängig von Änderungen am Portal-Stylesheet.
+        if (!document.getElementById('sp-kns-pdf-style')) {
+            const style = document.createElement('style');
+            style.id = 'sp-kns-pdf-style';
+            style.textContent = `
+                .kns-pdf-actions {
+                    display: inline-flex !important;
+                    flex-wrap: wrap !important;
+                    align-items: center !important;
+                    gap: 4px !important;
+                    row-gap: 3px !important;
+                    margin-left: 8px !important;
+                    vertical-align: middle !important;
+                    white-space: nowrap !important;
+                }
+                .kns-pdf-actions > * {
+                    flex: 0 0 auto !important;
+                    width: auto !important;
+                    min-width: 0 !important;
+                    height: auto !important;
+                    box-sizing: border-box !important;
+                    padding: 3px 6px !important;
+                    font-size: 10px !important;
+                    line-height: 1.4 !important;
+                    white-space: nowrap !important;
+                    border-radius: 4px !important;
+                }
+                .kns-pdf-actions > button {
+                    border: 0 !important;
+                    cursor: pointer !important;
+                }
+                .kns-pdf-actions > a {
+                    color: #64748b !important;
+                    text-decoration: underline !important;
+                }
+            `;
+            document.head.appendChild(style);
+        }
+
         const openPdfLinks = document.querySelectorAll('a.openpdf[dataid]');
         openPdfLinks.forEach((link) => {
-            if (link.dataset.knsPdfToolsAdded === 'true') return;
+            link.parentElement?.querySelectorAll('.kns-pdf-actions:not([data-sp-pdf-tools])')
+                .forEach((node) => node.remove());
+
+            if (link.dataset.spPdfToolsAdded === 'true') return;
+            link.dataset.spPdfToolsAdded = 'true';
             link.dataset.knsPdfToolsAdded = 'true';
 
             const dataid = link.getAttribute('dataid');
@@ -941,6 +987,7 @@
             const pdfUrl = `../popups/showdata.aspx?type=pakete&dataid=${dataid}`;
             const container = document.createElement('span');
             container.className = 'kns-pdf-actions';
+            container.dataset.spPdfTools = '';
             container.style.cssText = 'display: inline-flex; flex-wrap: wrap; align-items: center; gap: 4px; row-gap: 3px; margin-left: 8px; vertical-align: middle; white-space: nowrap;';
 
             // 1. Drucken (Zentriert A4)
