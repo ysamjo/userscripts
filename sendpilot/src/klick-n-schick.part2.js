@@ -938,13 +938,51 @@
             const style = document.createElement('style');
             style.id = 'sp-kns-pdf-style';
             style.textContent = `
+                div.divgreyblock:has(.sp-kns-pdf-table) {
+                    box-sizing: border-box !important;
+                    width: 100% !important;
+                    overflow-x: auto !important;
+                }
+                .sp-kns-pdf-table,
+                .sp-kns-pdf-header {
+                    width: 100% !important;
+                    table-layout: fixed !important;
+                    border-collapse: collapse !important;
+                }
+                .sp-kns-pdf-table tr > td:not(:last-child),
+                .sp-kns-pdf-header tr > td:not(:last-child) {
+                    min-width: 0 !important;
+                    overflow: hidden !important;
+                    text-overflow: ellipsis !important;
+                }
+                .sp-kns-pdf-table tr > td:last-child,
+                .sp-kns-pdf-header tr > td:last-child,
+                .sp-kns-pdf-table tr > th:last-child,
+                .sp-kns-pdf-header tr > th:last-child,
+                td.sp-kns-pdf-cell {
+                    width: 215px !important;
+                    min-width: 215px !important;
+                    max-width: 215px !important;
+                    white-space: nowrap !important;
+                    text-align: right !important;
+                    vertical-align: middle !important;
+                    padding-left: 4px !important;
+                    padding-right: 4px !important;
+                    overflow: visible !important;
+                }
+                td.sp-kns-pdf-cell a.openpdf {
+                    display: inline-flex !important;
+                    align-items: center !important;
+                    float: none !important;
+                    vertical-align: middle !important;
+                    margin: 0 5px 0 0 !important;
+                }
                 .kns-pdf-actions {
                     display: inline-flex !important;
-                    flex-wrap: wrap !important;
+                    flex-wrap: nowrap !important;
                     align-items: center !important;
                     gap: 4px !important;
-                    row-gap: 3px !important;
-                    margin-left: 8px !important;
+                    margin-left: 0 !important;
                     vertical-align: middle !important;
                     white-space: nowrap !important;
                 }
@@ -953,12 +991,17 @@
                     width: auto !important;
                     min-width: 0 !important;
                     height: auto !important;
+                    min-height: 0 !important;
                     box-sizing: border-box !important;
                     padding: 3px 6px !important;
-                    font-size: 10px !important;
-                    line-height: 1.4 !important;
+                    font-size: 11px !important;
+                    line-height: 1.2 !important;
                     white-space: nowrap !important;
                     border-radius: 4px !important;
+                    float: none !important;
+                    display: inline-flex !important;
+                    align-items: center !important;
+                    justify-content: center !important;
                 }
                 .kns-pdf-actions > button {
                     border: 0 !important;
@@ -967,13 +1010,50 @@
                 .kns-pdf-actions > a {
                     color: #64748b !important;
                     text-decoration: underline !important;
+                    padding: 2px 3px !important;
                 }
             `;
             document.head.appendChild(style);
         }
 
+        const markedPdfTables = new Set();
         const openPdfLinks = document.querySelectorAll('a.openpdf[dataid]');
         openPdfLinks.forEach((link) => {
+            const cell = link.closest('td');
+            const table = cell?.closest('table');
+            if (cell && table) {
+                cell.classList.add('sp-kns-pdf-cell');
+                table.classList.add('sp-kns-pdf-table');
+
+                if (!markedPdfTables.has(table)) {
+                    markedPdfTables.add(table);
+
+                    const container = table.closest('.divgreyblock') || table.parentElement;
+                    let headerTable = table.previousElementSibling;
+                    if (!(headerTable && headerTable.matches('table.listheader'))) {
+                        headerTable = container ? container.querySelector('table.listheader') : null;
+                    }
+                    if (headerTable) headerTable.classList.add('sp-kns-pdf-header');
+
+                    [table, headerTable].filter(Boolean).forEach((tbl) => {
+                        tbl.querySelectorAll('tr').forEach((row) => {
+                            const lastCell = row.lastElementChild;
+                            if (!lastCell || (lastCell.tagName !== 'TD' && lastCell.tagName !== 'TH')) return;
+                            lastCell.removeAttribute('width');
+                            lastCell.style.width = '';
+                            lastCell.style.minWidth = '';
+                            lastCell.style.maxWidth = '';
+                        });
+                        const cols = tbl.querySelectorAll('col');
+                        const lastCol = cols[cols.length - 1];
+                        if (lastCol) {
+                            lastCol.removeAttribute('width');
+                            lastCol.style.width = '';
+                        }
+                    });
+                }
+            }
+
             link.parentElement?.querySelectorAll('.kns-pdf-actions:not([data-sp-pdf-tools])')
                 .forEach((node) => node.remove());
 
@@ -988,7 +1068,7 @@
             const container = document.createElement('span');
             container.className = 'kns-pdf-actions';
             container.dataset.spPdfTools = '';
-            container.style.cssText = 'display: inline-flex; flex-wrap: wrap; align-items: center; gap: 4px; row-gap: 3px; margin-left: 8px; vertical-align: middle; white-space: nowrap;';
+            container.style.cssText = 'display: inline-flex; flex-wrap: nowrap; align-items: center; gap: 4px; margin-left: 0; vertical-align: middle; white-space: nowrap;';
 
             // 1. Drucken (Zentriert A4)
             const printBtn = document.createElement('button');
@@ -1195,6 +1275,179 @@
         }
     }
 
+    // --- 14b. Obermenü: Drei Unterpunkte von "Mein Klick-n-Schick" direkt nach oben holen ---
+    function setupPortalTopMenu() {
+        if (isIframe) return;
+        const menuList = document.querySelector('.mainmenu ul');
+        const origLink = document.getElementById('mmi_meinedaten');
+        const origLi = origLink?.closest('li');
+        if (!menuList || !origLink || !origLi) return;
+
+        if (!document.getElementById('sp-kns-topmenu-style')) {
+            const style = document.createElement('style');
+            style.id = 'sp-kns-topmenu-style';
+            style.textContent = `
+                .mainmenu {
+                    height: auto !important;
+                    min-height: 34px !important;
+                }
+                .mainmenu ul {
+                    display: flex !important;
+                    flex-wrap: nowrap !important;
+                    align-items: center !important;
+                    justify-content: space-between !important;
+                    margin: 0 !important;
+                    padding: 0 !important;
+                    width: 100% !important;
+                    box-sizing: border-box !important;
+                }
+                .mainmenu li {
+                    float: none !important;
+                    flex: 0 0 auto !important;
+                    display: block !important;
+                }
+                .mainmenu li a {
+                    padding: 8px 5px !important;
+                    font-size: 12px !important;
+                    white-space: nowrap !important;
+                }
+                .sp-kns-hidden {
+                    display: none !important;
+                }
+            `;
+            document.head.appendChild(style);
+        }
+
+        const headerNavi = document.querySelector('.headernavi');
+        const headerLinks = headerNavi ? Array.from(headerNavi.querySelectorAll('a')) : [];
+        let items;
+
+        if (headerLinks.length > 0) {
+            if (!headerNavi.classList.contains('sp-kns-hidden')) {
+                headerNavi.classList.add('sp-kns-hidden');
+            }
+            items = headerLinks.map((a, idx) => ({
+                id: `sp_mmi_sub_${idx}`,
+                label: (a.textContent || '').trim(),
+                href: a.getAttribute('href') || '#',
+                active: a.classList.contains('selected')
+            }));
+        } else {
+            items = [
+                {
+                    id: 'sp_mmi_sub_0',
+                    label: 'Meine Daten',
+                    href: '/portal/meinklicknschick',
+                    active: currentPath.includes('meinklicknschick') || currentPath.includes('meinedaten')
+                },
+                {
+                    id: 'sp_mmi_sub_1',
+                    label: 'Meine Bestellungen',
+                    href: '/portal/bestellungen',
+                    active: currentPath.includes('bestellungen')
+                },
+                {
+                    id: 'sp_mmi_sub_2',
+                    label: 'Meine Paketscheine',
+                    href: '/portal/meinepaketscheine.aspx',
+                    active: currentPath.includes('meinepaketscheine') || currentPath.includes('paketscheine')
+                }
+            ];
+        }
+
+        if (!origLi.classList.contains('sp-kns-hidden')) {
+            origLi.classList.add('sp-kns-hidden');
+        }
+
+        const needsLoginPopup = origLink.classList.contains('showloginpopup');
+        const existingItems = Array.from(menuList.querySelectorAll('li[data-sp-topmenu-item="true"]'));
+
+        if (existingItems.length === items.length) {
+            items.forEach((item, idx) => {
+                const a = existingItems[idx].querySelector('a');
+                if (!a) return;
+                if (a.textContent !== item.label) a.textContent = item.label;
+                if (a.getAttribute('href') !== item.href) a.setAttribute('href', item.href);
+                if (a.classList.contains('aktiv') !== item.active) a.classList.toggle('aktiv', item.active);
+                if (a.classList.contains('showloginpopup') !== needsLoginPopup) {
+                    a.classList.toggle('showloginpopup', needsLoginPopup);
+                }
+            });
+            return;
+        }
+
+        existingItems.forEach((li) => li.remove());
+        let anchor = origLi;
+        items.forEach((item) => {
+            const li = document.createElement('li');
+            li.dataset.spTopmenuItem = 'true';
+            const a = document.createElement('a');
+            a.id = item.id;
+            a.href = item.href;
+            a.textContent = item.label;
+            if (needsLoginPopup) a.classList.add('showloginpopup');
+            if (item.active) a.classList.add('aktiv');
+            li.appendChild(a);
+            anchor.after(li);
+            anchor = li;
+        });
+    }
+
+    // --- 14c. Linke Info-Sidebar mit Telefonnummer entfernen (mehr Platz für Tabellen) ---
+    function setupRemovePhoneSidebar() {
+        if (isIframe) return;
+        const leftCells = document.querySelectorAll('table.tablecontent td.left');
+        if (!leftCells.length) return;
+
+        let removedAny = false;
+        leftCells.forEach((td) => {
+            const isPhoneSidebar = td.id === 'ContentPlaceHolder1_info'
+                || Boolean(td.querySelector('.info_gold, .info_question, .info_image'))
+                || (td.textContent || '').includes('86 38 98 10 89');
+            if (!isPhoneSidebar) return;
+
+            removedAny = true;
+            if (!td.classList.contains('sp-kns-sidebar-hidden')) {
+                td.classList.add('sp-kns-sidebar-hidden');
+            }
+
+            const sep = td.nextElementSibling;
+            if (sep && sep.matches('td.vseperator') && !sep.classList.contains('sp-kns-sidebar-hidden')) {
+                sep.classList.add('sp-kns-sidebar-hidden');
+            }
+
+            const table = td.closest('table.tablecontent');
+            if (table && !table.classList.contains('sp-kns-fullwidth-table')) {
+                table.classList.add('sp-kns-fullwidth-table');
+            }
+
+            const rightCell = td.closest('tr')?.querySelector('td.right');
+            if (rightCell && !rightCell.classList.contains('sp-kns-fullwidth-right')) {
+                rightCell.classList.add('sp-kns-fullwidth-right');
+            }
+        });
+
+        if (removedAny && !document.getElementById('sp-kns-sidebar-style')) {
+            const style = document.createElement('style');
+            style.id = 'sp-kns-sidebar-style';
+            style.textContent = `
+                td.sp-kns-sidebar-hidden {
+                    display: none !important;
+                }
+                table.tablecontent.sp-kns-fullwidth-table {
+                    width: 100% !important;
+                }
+                td.sp-kns-fullwidth-right,
+                table.sp-kns-fullwidth-table .fullrow {
+                    width: 100% !important;
+                    max-width: 100% !important;
+                    box-sizing: border-box !important;
+                }
+            `;
+            document.head.appendChild(style);
+        }
+    }
+
     // --- 15. Floating Control Panel (Status & Settings) ---
     function setupControlPanel() {
         if (!config.showPanel) return;
@@ -1389,6 +1642,8 @@
         setupCopyTools();
         setupAutoCheckout();
         setupQualityOfLife();
+        setupPortalTopMenu();
+        setupRemovePhoneSidebar();
         setupControlPanel();
     }
 
