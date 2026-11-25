@@ -1219,21 +1219,24 @@
             const pdfUrl = `../popups/showdata.aspx?type=pakete&dataid=${dataid}`;
             const container = document.createElement('span');
             container.className = 'kns-pdf-actions';
-            container.style.cssText = 'display: inline-flex; align-items: center; gap: 4px; margin-left: 8px; vertical-align: middle;';
+            container.style.cssText = 'display: inline-flex; flex-wrap: wrap; align-items: center; gap: 4px; row-gap: 3px; margin-left: 8px; vertical-align: middle; white-space: nowrap;';
 
             // 1. Drucken (Zentriert A4)
             const printBtn = document.createElement('button');
             printBtn.type = 'button';
-            printBtn.innerHTML = '🖨️ Drucken';
+            printBtn.innerHTML = 'Drucken';
             printBtn.title = 'Paketschein zuschneiden (ohne Quittung), zentrieren & sofort drucken';
             printBtn.style.cssText = `
                 background: #059669;
                 color: #ffffff;
                 border: none;
                 border-radius: 4px;
-                padding: 2px 7px;
-                font-size: 11px;
+                padding: 3px 6px;
+                font-size: 10px;
                 font-weight: 700;
+                line-height: 1.4;
+                white-space: nowrap;
+                flex: 0 0 auto;
                 cursor: pointer;
                 transition: background 0.15s;
             `;
@@ -1246,16 +1249,19 @@
             // 2. A4 Zentriert Download
             const dlA4Btn = document.createElement('button');
             dlA4Btn.type = 'button';
-            dlA4Btn.innerHTML = '⬇ A4';
+            dlA4Btn.innerHTML = 'A4';
             dlA4Btn.title = 'Paketschein zuschneiden & als zentriertes DIN A4 PDF herunterladen (Keynote-Workflow)';
             dlA4Btn.style.cssText = `
                 background: #2563eb;
                 color: #ffffff;
                 border: none;
                 border-radius: 4px;
-                padding: 2px 6px;
-                font-size: 11px;
+                padding: 3px 5px;
+                font-size: 10px;
                 font-weight: 600;
+                line-height: 1.4;
+                white-space: nowrap;
+                flex: 0 0 auto;
                 cursor: pointer;
             `;
             dlA4Btn.addEventListener('click', (e) => {
@@ -1267,16 +1273,19 @@
             // 3. A6 Label Download
             const dlA6Btn = document.createElement('button');
             dlA6Btn.type = 'button';
-            dlA6Btn.innerHTML = '🏷️ A6';
+            dlA6Btn.innerHTML = 'A6';
             dlA6Btn.title = 'Als reines DIN A6 Etikett für Thermodrucker herunterladen';
             dlA6Btn.style.cssText = `
                 background: #475569;
                 color: #ffffff;
                 border: none;
                 border-radius: 4px;
-                padding: 2px 5px;
-                font-size: 11px;
+                padding: 3px 5px;
+                font-size: 10px;
                 font-weight: 600;
+                line-height: 1.4;
+                white-space: nowrap;
+                flex: 0 0 auto;
                 cursor: pointer;
             `;
             dlA6Btn.addEventListener('click', (e) => {
@@ -1295,7 +1304,10 @@
             dlOrigLink.style.cssText = `
                 color: #64748b;
                 font-size: 10px;
+                line-height: 1.4;
                 text-decoration: underline;
+                white-space: nowrap;
+                flex: 0 0 auto;
                 margin-left: 2px;
             `;
 
