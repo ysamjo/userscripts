@@ -10,3 +10,4 @@
 *.gate.lock*
 sendpilot/dist/
 sendpilot/.screenshots/
+.worktrees/
