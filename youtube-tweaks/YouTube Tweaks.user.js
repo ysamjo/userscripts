@@ -1,7 +1,10 @@
 // ==UserScript==
 // @name         YouTube Tweaks
 // @namespace    local.yt.tweaks
-// @version      1.0.0
+// @version      1.0.1
+// @updateURL    https://raw.githubusercontent.com/ysamjo/userscripts/main/youtube-tweaks/YouTube%20Tweaks.user.js
+// @downloadURL  https://raw.githubusercontent.com/ysamjo/userscripts/main/youtube-tweaks/YouTube%20Tweaks.user.js
+// @homepageURL  https://github.com/ysamjo/userscripts/tree/main/youtube-tweaks
 // @description  OLED-Black, Shorts aus, Speed merken, Ambient/Endscreen aus, gesehene dimmen, Playlist-Laenge, Zeitstempel-Link, Audio-Only, Auto-PiP, Fokus-Modus, Pause-Dialog weg
 // @author       local
 // @match        https://www.youtube.com/*

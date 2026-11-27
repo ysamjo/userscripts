@@ -1,7 +1,10 @@
 // ==UserScript==
 // @name         Paketda Packlink Button & Adblock Remover
 // @namespace    http://tampermonkey.net/
-// @version      2.4
+// @version      2.4.1
+// @updateURL    https://raw.githubusercontent.com/ysamjo/userscripts/main/paketda/Paketda.user.js
+// @downloadURL  https://raw.githubusercontent.com/ysamjo/userscripts/main/paketda/Paketda.user.js
+// @homepageURL  https://github.com/ysamjo/userscripts/tree/main/paketda
 // @description  Ergänzt Packlink-Buttons, Klick-n-Schick mit Paketmaßen als passendes Angebot und entfernt den Adblock-Hinweis.
 // @match        https://www.paketda.de/paket-preis-rechner.php*
 // @icon         https://www.google.com/s2/favicons?sz=64&domain=paketda.de

@@ -1,12 +1,12 @@
 // ==UserScript==
 // @name         Video Speed Control with Keyboard
 // @description  Mit s und d HTML5-Video-Geschwindigkeit in 0,1-Schritten ändern; r setzt auf 1.0 zurück. Speichert Speed seitenübergreifend.
-// @version      2026-11-01.2
+// @version      2026-11-26.1
 // @author       Vitus Schuhwerk (modifiziert)
 // @license      MIT
-// @homepageURL  https://gist.githubusercontent.com/schuhwerk/67fb4da50652681b857002e1ba2bf071
-// @updateURL    https://gist.githubusercontent.com/schuhwerk/67fb4da50652681b857002e1ba2bf071/raw
-// @downloadURL  https://gist.githubusercontent.com/schuhwerk/67fb4da50652681b857002e1ba2bf071/raw
+// @homepageURL  https://github.com/ysamjo/userscripts/tree/main/video-speed
+// @updateURL    https://raw.githubusercontent.com/ysamjo/userscripts/main/video-speed/Video%20Speed%20Control%20with%20Keyboard.user.js
+// @downloadURL  https://raw.githubusercontent.com/ysamjo/userscripts/main/video-speed/Video%20Speed%20Control%20with%20Keyboard.user.js
 // @match        https://*.youtube.com/*
 // @match        https://*.netflix.com/*
 // @match        https://*.primevideo.com/*

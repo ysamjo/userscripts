@@ -1,7 +1,10 @@
 // ==UserScript==
 // @name         mydealz Werbebanner Blocker
 // @namespace    local.mydealz.adblock
-// @version      1.0.0
+// @version      1.0.1
+// @updateURL    https://raw.githubusercontent.com/ysamjo/userscripts/main/mydealz/mydealz%20Adblock.user.js
+// @downloadURL  https://raw.githubusercontent.com/ysamjo/userscripts/main/mydealz/mydealz%20Adblock.user.js
+// @homepageURL  https://github.com/ysamjo/userscripts/tree/main/mydealz
 // @description  Blendet Werbebanner, Ad-Slots und Campaign-Banner (Black Friday etc.) auf mydealz.de aus.
 // @match        https://www.mydealz.de/*
 // @run-at       document-start
