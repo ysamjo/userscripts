@@ -1,7 +1,10 @@
 // ==UserScript==
 // @name         Klick-n-Schick PowerTools
 // @namespace    http://tampermonkey.net/
-// @version      1.4.0
+// @version      1.4.1
+// @updateURL    https://raw.githubusercontent.com/ysamjo/userscripts/main/klick-n-schick/Klick-n-Schick.user.js
+// @downloadURL  https://raw.githubusercontent.com/ysamjo/userscripts/main/klick-n-schick/Klick-n-Schick.user.js
+// @homepageURL  https://github.com/ysamjo/userscripts/tree/main/klick-n-schick
 // @description  Erleichtert die Nutzung von Klick-n-Schick: Dauerhafter Auto-Login auf allen Seiten, Session Keep-Alive (verhindert ASP.NET-Session-Timeout), Cookie-Persistenz, Sperrgut-Standard 'Nein', LEGO-Presets, Maße aus URL, eBay-Auto-Import, DPD-Standard, automatisiertes Beschneiden & Zentrieren von Paketscheinen (Keynote-Workflow), Direkt-Druck, Adress- & Tracking-Kopierer.
 // @author       Andreas Stegmann
 // @match        https://www.klick-n-schick.com/*
