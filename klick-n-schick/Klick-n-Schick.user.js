@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Klick-n-Schick PowerTools
 // @namespace    http://tampermonkey.net/
-// @version      1.4.1
+// @version      1.4.2
 // @updateURL    https://raw.githubusercontent.com/ysamjo/userscripts/main/klick-n-schick/Klick-n-Schick.user.js
 // @downloadURL  https://raw.githubusercontent.com/ysamjo/userscripts/main/klick-n-schick/Klick-n-Schick.user.js
 // @homepageURL  https://github.com/ysamjo/userscripts/tree/main/klick-n-schick
@@ -87,6 +87,8 @@
 
     const isIframe = window.self !== window.top;
     const currentPath = window.location.pathname.toLowerCase();
+
+const isSendPilotActive = () => document.documentElement?.dataset?.spKnsActive === '1';
 
     // --- 2. URL-Parameter für Maße & Gewicht auslesen ---
     function parseDimensionParams(searchStr) {
@@ -1107,7 +1109,6 @@
     // --- 12. FEATURE: 1-Klick Adress- & Tracking-Kopierer ---
     function setupCopyTools() {
         if (!config.enableCopyTools) return;
-
         // A) eBay-Käuferadressen auf /portal/ebayimport kopieren
         const ebayAddressSpans = document.querySelectorAll('table.tblebaydata td.datarow span[title*="::"]');
         ebayAddressSpans.forEach((span) => {
@@ -1206,10 +1207,127 @@
         });
 
         // C) Direkter PDF-Download- & Druck-Buttons in meinepaketscheine
+        if (isSendPilotActive()) return;
+        const isInvoicesPage = currentPath.includes('meinerechnungen');
+
+        if (!document.getElementById('sp-kns-pdf-style')) {
+            const style = document.createElement('style');
+            style.id = 'sp-kns-pdf-style';
+            style.textContent = `
+                div.divgreyblock:has(.sp-kns-pdf-table) { box-sizing: border-box !important; inline-size: 100% !important; overflow-x: auto !important; }
+                .sp-kns-pdf-table, .sp-kns-pdf-header { inline-size: 100% !important; table-layout: fixed !important; border-collapse: separate !important; border-spacing: 2px 0 !important; }
+                .sp-kns-pdf-table td, .sp-kns-pdf-header td, .sp-kns-pdf-table th, .sp-kns-pdf-header th { box-sizing: border-box !important; }
+                .sp-kns-pdf-table tr > td:not(:last-child), .sp-kns-pdf-header tr > td:not(:last-child) { min-inline-size: 0 !important; overflow: hidden !important; text-overflow: ellipsis !important; white-space: nowrap !important; }
+                .sp-kns-pdf-table td.tdoverflow > span[data-kns-tracking-added] { display: inline !important; }
+                .sp-kns-pdf-table tr > td:last-child, .sp-kns-pdf-header tr > td:last-child, .sp-kns-pdf-table tr > th:last-child, .sp-kns-pdf-header tr > th:last-child, td.sp-kns-pdf-cell { white-space: nowrap !important; text-align: end !important; vertical-align: middle !important; padding-inline: 4px !important; overflow: visible !important; }
+                td.sp-kns-pdf-cell a.openpdf { display: inline-flex !important; align-items: safe center !important; float: none !important; vertical-align: middle !important; margin-inline: 0 5px !important; }
+                .kns-pdf-actions { display: inline-flex !important; flex-wrap: nowrap !important; align-items: safe center !important; gap: 4px !important; margin-inline-start: 0 !important; vertical-align: middle !important; white-space: nowrap !important; }
+                .kns-pdf-actions > * { flex: 0 0 auto !important; inline-size: auto !important; min-inline-size: 0 !important; block-size: auto !important; min-block-size: 0 !important; box-sizing: border-box !important; padding: 3px 6px !important; font-size: 11px !important; line-height: 1.2 !important; white-space: nowrap !important; border-radius: 4px !important; float: none !important; display: inline-flex !important; align-items: safe center !important; justify-content: center !important; }
+                .kns-pdf-actions > button { border: 0 !important; background-image: none !important; color: #ffffff !important; cursor: pointer !important; }
+                .kns-pdf-actions > button.kns-pdf-btn-print { background: #059669 !important; font-weight: 700 !important; }
+                .kns-pdf-actions > button.kns-pdf-btn-a4 { background: #2563eb !important; font-weight: 600 !important; }
+                .kns-pdf-actions > button.kns-pdf-btn-a6 { background: #475569 !important; font-weight: 600 !important; }
+                .kns-pdf-actions > button:hover { filter: brightness(0.92) !important; }
+                .kns-pdf-actions > a { color: #64748b !important; text-decoration: underline !important; padding: 2px 3px !important; }
+            `;
+            document.head.appendChild(style);
+        }
+
+        const markedPdfTables = new Set();
         const openPdfLinks = document.querySelectorAll('a.openpdf[dataid]');
         openPdfLinks.forEach((link) => {
-            if (link.dataset.knsPdfToolsAdded === 'true') return;
-            link.dataset.knsPdfToolsAdded = 'true';
+            const inInvoicesResult = !!link.closest('#ContentPlaceHolder1_divRechnungenResult');
+            if (isInvoicesPage || inInvoicesResult) {
+                link.parentElement?.querySelectorAll('.kns-pdf-actions').forEach((node) => node.remove());
+                link.style.float = 'none';
+                return;
+            }
+
+            const cell = link.closest('td');
+            const table = cell?.closest('table');
+            if (cell && table) {
+                cell.classList.add('sp-kns-pdf-cell');
+                table.classList.add('sp-kns-pdf-table');
+
+                if (!markedPdfTables.has(table)) {
+                    markedPdfTables.add(table);
+
+                    const container = table.closest('.divgreyblock') || table.parentElement;
+                    let headerTable = table.previousElementSibling;
+                    if (!(headerTable && headerTable.matches('table.listheader'))) {
+                        headerTable = container ? container.querySelector('table.listheader') : null;
+                    }
+                    if (headerTable) headerTable.classList.add('sp-kns-pdf-header');
+
+                    const tblWidth = table.getBoundingClientRect().width
+                        || headerTable?.getBoundingClientRect().width
+                        || 918;
+                    const actionPct = Math.min(34, Math.max(20.5, Math.ceil((190 / tblWidth) * 1000) / 10));
+                    const restPct = Math.max(50, 100 - actionPct);
+
+                    [table, headerTable].filter(Boolean).forEach((tbl) => {
+                        if (tbl.dataset.spWidthsApplied === 'true') return;
+                        const firstRow = tbl.querySelector('tr');
+                        const rowCells = firstRow ? Array.from(firstRow.children).filter((c) => c.tagName === 'TD' || c.tagName === 'TH') : [];
+                        const N = rowCells.length;
+                        if (N < 2) return;
+
+                        let pcts = [];
+                        if (tbl.dataset.spOrigWidthPct) {
+                            try { pcts = JSON.parse(tbl.dataset.spOrigWidthPct); } catch (e) { pcts = []; }
+                        }
+                        if (!Array.isArray(pcts) || pcts.length !== N - 1) {
+                            let allValid = true;
+                            pcts = rowCells.slice(0, N - 1).map((c) => {
+                                const w = c.style.width || c.getAttribute('width') || '';
+                                const val = parseFloat(w);
+                                if (!Number.isFinite(val) || val <= 0) {
+                                    allValid = false;
+                                    return 1;
+                                }
+                                return val;
+                            });
+                            if (!allValid) pcts = pcts.map(() => 1);
+                            tbl.dataset.spOrigWidthPct = JSON.stringify(pcts);
+                        }
+                        const S = pcts.reduce((a, b) => a + b, 0) || pcts.length;
+                        const scaledPcts = pcts.map((p) => (restPct * (p / S)).toFixed(2) + '%');
+                        const actionPctStr = actionPct.toFixed(2) + '%';
+
+                        tbl.querySelectorAll('tr').forEach((row) => {
+                            const cells = Array.from(row.children).filter((c) => c.tagName === 'TD' || c.tagName === 'TH');
+                            if (cells.length !== N) return;
+                            cells.forEach((c, idx) => {
+                                c.removeAttribute('width');
+                                if (idx < N - 1) {
+                                    c.style.width = scaledPcts[idx];
+                                } else {
+                                    c.style.width = actionPctStr;
+                                    c.style.minWidth = '';
+                                    c.style.maxWidth = '';
+                                }
+                            });
+                        });
+
+                        const cols = tbl.querySelectorAll('col');
+                        if (cols.length) {
+                            Array.from(cols).forEach((col, idx) => {
+                                col.removeAttribute('width');
+                                if (idx < cols.length - 1 && idx < scaledPcts.length) {
+                                    col.style.width = scaledPcts[idx];
+                                } else if (idx === cols.length - 1) {
+                                    col.style.width = actionPctStr;
+                                }
+                            });
+                        }
+                        tbl.dataset.spWidthsApplied = 'true';
+                    });
+                }
+            }
+
+            link.parentElement?.querySelectorAll('.kns-pdf-actions:not([data-sp-pdf-tools])').forEach((node) => node.remove());
+
+            if (link.dataset.spPdfToolsAdded === 'true' || link.dataset.knsPdfToolsAdded === 'true') return;
 
             const dataid = link.getAttribute('dataid');
             if (!dataid) return;
@@ -1217,89 +1335,206 @@
             const pdfUrl = `../popups/showdata.aspx?type=pakete&dataid=${dataid}`;
             const container = document.createElement('span');
             container.className = 'kns-pdf-actions';
-            container.style.cssText = 'display: inline-flex; align-items: center; gap: 4px; margin-left: 8px; vertical-align: middle;';
+            container.dataset.spPdfTools = '';
 
-            // 1. Drucken (Zentriert A4)
+            // 1. Drucken
             const printBtn = document.createElement('button');
             printBtn.type = 'button';
-            printBtn.innerHTML = '🖨️ Drucken';
+            printBtn.className = 'kns-pdf-btn-print';
+            printBtn.textContent = 'Drucken';
             printBtn.title = 'Paketschein zuschneiden (ohne Quittung), zentrieren & sofort drucken';
-            printBtn.style.cssText = `
-                background: #059669;
-                color: #ffffff;
-                border: none;
-                border-radius: 4px;
-                padding: 2px 7px;
-                font-size: 11px;
-                font-weight: 700;
-                cursor: pointer;
-                transition: background 0.15s;
-            `;
             printBtn.addEventListener('click', (e) => {
                 e.preventDefault();
                 e.stopPropagation();
                 printLabelDirect(pdfUrl, dataid, 'a4_centered');
             });
 
-            // 2. A4 Zentriert Download
+            // 2. A4
             const dlA4Btn = document.createElement('button');
             dlA4Btn.type = 'button';
-            dlA4Btn.innerHTML = '⬇ A4';
+            dlA4Btn.className = 'kns-pdf-btn-a4';
+            dlA4Btn.textContent = 'A4';
             dlA4Btn.title = 'Paketschein zuschneiden & als zentriertes DIN A4 PDF herunterladen (Keynote-Workflow)';
-            dlA4Btn.style.cssText = `
-                background: #2563eb;
-                color: #ffffff;
-                border: none;
-                border-radius: 4px;
-                padding: 2px 6px;
-                font-size: 11px;
-                font-weight: 600;
-                cursor: pointer;
-            `;
             dlA4Btn.addEventListener('click', (e) => {
                 e.preventDefault();
                 e.stopPropagation();
                 downloadLabelProcessed(pdfUrl, dataid, 'a4_centered');
             });
 
-            // 3. A6 Label Download
+            // 3. A6
             const dlA6Btn = document.createElement('button');
             dlA6Btn.type = 'button';
-            dlA6Btn.innerHTML = '🏷️ A6';
+            dlA6Btn.className = 'kns-pdf-btn-a6';
+            dlA6Btn.textContent = 'A6';
             dlA6Btn.title = 'Als reines DIN A6 Etikett für Thermodrucker herunterladen';
-            dlA6Btn.style.cssText = `
-                background: #475569;
-                color: #ffffff;
-                border: none;
-                border-radius: 4px;
-                padding: 2px 5px;
-                font-size: 11px;
-                font-weight: 600;
-                cursor: pointer;
-            `;
             dlA6Btn.addEventListener('click', (e) => {
                 e.preventDefault();
                 e.stopPropagation();
                 downloadLabelProcessed(pdfUrl, dataid, 'a6_label');
             });
 
-            // 4. Original-Download
+            // 4. Original
             const dlOrigLink = document.createElement('a');
             dlOrigLink.href = pdfUrl;
             dlOrigLink.download = `Paketschein_${dataid}_original.pdf`;
             dlOrigLink.target = '_blank';
-            dlOrigLink.innerHTML = 'Orig.';
+            dlOrigLink.textContent = 'Orig.';
             dlOrigLink.title = 'Original unbeschnittenes PDF mit Kundenquittung herunterladen';
-            dlOrigLink.style.cssText = `
-                color: #64748b;
-                font-size: 10px;
-                text-decoration: underline;
-                margin-left: 2px;
-            `;
 
             container.append(printBtn, dlA4Btn, dlA6Btn, dlOrigLink);
             link.after(container);
+
+            link.dataset.spPdfToolsAdded = 'true';
+            link.dataset.knsPdfToolsAdded = 'true';
         });
+    }
+
+    // --- 12b. FEATURE: Portal-Obermenü (Meine Daten / Bestellungen / Paketscheine) ---
+    function setupPortalTopMenu() {
+        if (isSendPilotActive()) return;
+        if (isIframe) return;
+        const menuList = document.querySelector('.mainmenu ul');
+        const origLink = document.getElementById('mmi_meinedaten');
+        const origLi = origLink?.closest('li');
+        if (!menuList || !origLink || !origLi) return;
+
+        if (!document.getElementById('sp-kns-topmenu-style')) {
+            const style = document.createElement('style');
+            style.id = 'sp-kns-topmenu-style';
+            style.textContent = `
+                .mainmenu { height: auto !important; min-block-size: 34px !important; }
+                .mainmenu ul { display: flex !important; flex-wrap: nowrap !important; align-items: safe center !important; justify-content: space-between !important; gap: 0 !important; margin: 0 !important; padding: 0 !important; inline-size: 100% !important; box-sizing: border-box !important; }
+                .mainmenu li { float: none !important; flex: 0 1 auto !important; min-inline-size: 0 !important; display: block !important; }
+                .mainmenu li a { padding: 8px 4px !important; font-size: 11px !important; white-space: nowrap !important; }
+                .sp-kns-hidden, .mainmenu li.sp-kns-hidden { display: none !important; }
+            `;
+            document.head.appendChild(style);
+        }
+
+        const headerNavi = document.querySelector('.headernavi');
+        const headerLinks = headerNavi ? Array.from(headerNavi.querySelectorAll('a')) : [];
+        let items;
+
+        if (headerLinks.length > 0) {
+            if (headerNavi && !headerNavi.classList.contains('sp-kns-hidden')) {
+                headerNavi.classList.add('sp-kns-hidden');
+            }
+            items = headerLinks.map((a, idx) => {
+                let href = a.getAttribute('href') || '#';
+                try {
+                    href = new URL(a.getAttribute('href') || '#', window.location.href).pathname;
+                } catch (e) {}
+                return {
+                    id: `sp_mmi_sub_${idx}`,
+                    label: (a.textContent || '').trim(),
+                    href: href,
+                    active: a.classList.contains('selected')
+                };
+            });
+        } else {
+            items = [
+                {
+                    id: 'sp_mmi_sub_0',
+                    label: 'Meine Daten',
+                    href: '/portal/meinklicknschick/meinedaten',
+                    active: currentPath.includes('meinedaten') || /\/meinklicknschick\/?$/.test(currentPath)
+                },
+                {
+                    id: 'sp_mmi_sub_1',
+                    label: 'Meine Bestellungen',
+                    href: '/portal/meinklicknschick/meinerechnungen',
+                    active: currentPath.includes('meinerechnungen') || currentPath.includes('bestellungen')
+                },
+                {
+                    id: 'sp_mmi_sub_2',
+                    label: 'Meine Paketscheine',
+                    href: '/portal/meinklicknschick/meinepaketscheine',
+                    active: currentPath.includes('meinepaketscheine')
+                }
+            ];
+        }
+
+        if (!origLi.classList.contains('sp-kns-hidden')) {
+            origLi.classList.add('sp-kns-hidden');
+        }
+
+        const needsLoginPopup = origLink.classList.contains('showloginpopup');
+        const existingItems = Array.from(menuList.querySelectorAll('li[data-sp-topmenu-item="true"]'));
+
+        if (existingItems.length === items.length) {
+            items.forEach((item, idx) => {
+                const a = existingItems[idx].querySelector('a');
+                if (!a) return;
+                if (a.textContent !== item.label) a.textContent = item.label;
+                if (a.getAttribute('href') !== item.href) a.setAttribute('href', item.href);
+                a.classList.toggle('aktiv', item.active);
+                a.classList.toggle('showloginpopup', needsLoginPopup);
+            });
+            return;
+        }
+
+        existingItems.forEach((li) => li.remove());
+        let anchor = origLi;
+        items.forEach((item) => {
+            const li = document.createElement('li');
+            li.dataset.spTopmenuItem = 'true';
+            const a = document.createElement('a');
+            a.id = item.id;
+            a.href = item.href;
+            a.textContent = item.label;
+            if (needsLoginPopup) a.classList.add('showloginpopup');
+            if (item.active) a.classList.add('aktiv');
+            li.appendChild(a);
+            anchor.after(li);
+            anchor = li;
+        });
+    }
+
+    // --- 12c. FEATURE: Linke Telefon-Sidebar entfernen (mehr Platz) ---
+    function setupRemovePhoneSidebar() {
+        if (isSendPilotActive()) return;
+        if (isIframe) return;
+        const leftCells = document.querySelectorAll('table.tablecontent td.left');
+        if (!leftCells.length) return;
+
+        let removedAny = false;
+        leftCells.forEach((td) => {
+            if (td.querySelector('.loginpanel, .uc_login')) return;
+            const isPhoneSidebar = Boolean(td.querySelector('.info_gold, .info_question, .info_image')) ||
+                (td.textContent || '').includes('86 38 98 10 89');
+            if (!isPhoneSidebar) return;
+
+            removedAny = true;
+            if (!td.classList.contains('sp-kns-sidebar-hidden')) {
+                td.classList.add('sp-kns-sidebar-hidden');
+            }
+
+            const sep = td.nextElementSibling;
+            if (sep && sep.matches('td.vseperator') && !sep.classList.contains('sp-kns-sidebar-hidden')) {
+                sep.classList.add('sp-kns-sidebar-hidden');
+            }
+
+            const table = td.closest('table.tablecontent');
+            if (table && !table.classList.contains('sp-kns-fullwidth-table')) {
+                table.classList.add('sp-kns-fullwidth-table');
+            }
+
+            const rightCell = td.closest('tr')?.querySelector('td.right');
+            if (rightCell && !rightCell.classList.contains('sp-kns-fullwidth-right')) {
+                rightCell.classList.add('sp-kns-fullwidth-right');
+            }
+        });
+
+        if (removedAny && !document.getElementById('sp-kns-sidebar-style')) {
+            const style = document.createElement('style');
+            style.id = 'sp-kns-sidebar-style';
+            style.textContent = `
+                td.sp-kns-sidebar-hidden { display: none !important; }
+                table.tablecontent.sp-kns-fullwidth-table { width: 100% !important; }
+                td.sp-kns-fullwidth-right, table.sp-kns-fullwidth-table .fullrow { width: 100% !important; max-width: 100% !important; box-sizing: border-box !important; }
+            `;
+            document.head.appendChild(style);
+        }
     }
 
     // --- 13. FEATURE: Vom Warenkorb automatisch zur Kasse weiterleiten ---
@@ -1615,6 +1850,10 @@
         setupAutoEbayImport();
         setupAlwaysDpd();
         setupAutoPdfDownload();
+        if (!isSendPilotActive()) {
+            setupPortalTopMenu();
+            setupRemovePhoneSidebar();
+        }
         setupCopyTools();
         setupAutoCheckout();
         setupQualityOfLife();
